@@ -139,7 +139,7 @@
     .globe-caption span { color: var(--accent); }
     .map-legend {
       position: absolute; left: 7%; bottom: 11%; z-index: 1;
-      display: flex; align-items: center; gap: 7px; padding: 9px 11px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 7px; max-width: min(82%, 580px); padding: 9px 11px;
       border: 1px solid rgba(207,224,242,.12); border-radius: 7px;
       background: rgba(11,16,23,.72); backdrop-filter: blur(10px);
       color: #d7e1eb; font: 10px var(--mono); letter-spacing: .04em; pointer-events: none;
@@ -148,6 +148,8 @@
     .wildfire-map-key { display: inline-flex; align-items: center; gap: 5px; border-left: 1px solid rgba(207,224,242,.2); padding-left: 8px; color: #ff9a63; }
     .wildfire-map-key[hidden] { display: none; }
     .wildfire-map-key-symbol { font-size: 12px; }
+    .tornado-map-key { color: #ff7b83; }
+    .tornado-map-key-symbol { display: inline-grid; width: 14px; height: 14px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font: 700 8px var(--mono); }
     .map-label-layer { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
     .map-label {
       position: absolute; left: 0; top: 0; visibility: hidden; white-space: nowrap;
@@ -188,6 +190,11 @@
       max-width: 180px; overflow: hidden; text-overflow: ellipsis;
     }
     .wildfire-label-symbol { margin-right: 4px; color: #ff7447; font-size: 11px; }
+    .map-label-tornado {
+      padding: 3px 6px; border-color: rgba(255,89,100,.9); border-radius: 50%;
+      background: rgba(46,10,16,.96); color: #ffd5d8; font: 700 8px/1.2 var(--mono);
+      box-shadow: 0 1px 6px rgba(0,0,0,.8); transform: translate(-50%, -50%);
+    }
     .imagery-credit {
       position: absolute; right: 3%; bottom: 8px; z-index: 4; max-width: 90%;
       color: #aab4bf; font: 9px var(--sans); text-align: right; pointer-events: none;
@@ -277,6 +284,7 @@
     .storm-card { min-width: 0; padding: 11px; border: 1px solid rgba(207,224,242,.1); border-left: 2px solid var(--storm-color, #8bc7df); border-radius: 8px; background: linear-gradient(145deg, rgba(20,28,38,.68), rgba(12,17,24,.75)); }
     .storm-card-title { margin: 0; overflow-wrap: anywhere; color: #dce4ec; font: 500 11px/1.45 var(--sans); }
     .storm-card-details { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; color: #84919d; font: 8px/1.4 var(--mono); }
+    .storm-card-details > span { overflow-wrap: anywhere; }
     .storm-card a { color: #b6c8d8; text-decoration: none; }
     .storm-card a:hover { text-decoration: underline; }
     .storm-empty { grid-column: 1 / -1; border: 1px dashed rgba(207,224,242,.12); border-radius: 8px; padding: 13px; color: #7d8995; font-size: 11px; line-height: 1.5; }
@@ -469,7 +477,7 @@
         <div class="globe-column">
           <div class="globe-area" aria-label="Interactive 3D Earth">
             <canvas id="globe" aria-label="3D globe showing the selected location"></canvas>
-            <div class="map-legend" aria-hidden="true"><span class="legend-country">●</span><span id="label-mode">SEARCH A LOCATION TO REVEAL ITS COUNTRY</span><span class="wildfire-map-key" id="wildfire-map-key" hidden><span class="wildfire-map-key-symbol">●</span> FIRE ACTIVITY CLUSTER</span></div>
+            <div class="map-legend" aria-hidden="true"><span class="legend-country">●</span><span id="label-mode">SEARCH A LOCATION TO REVEAL ITS COUNTRY</span><span class="wildfire-map-key" id="wildfire-map-key" hidden><span class="wildfire-map-key-symbol">●</span> FIRE ACTIVITY CLUSTER</span><span class="wildfire-map-key tornado-map-key" id="tornado-map-key" hidden><span class="tornado-map-key-symbol">T</span> SPC TORNADO REPORT</span></div>
             <div class="map-label-layer" id="map-label-layer" aria-hidden="true"></div>
             <div class="imagery-credit" id="imagery-credit" aria-live="polite"></div>
             <div class="globe-stats"><span>EARTH / <strong>01</strong></span><span>ROTATION: <strong id="rotation-state">ACTIVE</strong></span><span>VIEW: <strong id="view-coords">000° / 000°</strong></span></div>
@@ -514,15 +522,15 @@
       <section class="storm-section" aria-labelledby="tornadoes-title">
         <div class="storm-head">
           <div>
-            <h2 class="storm-title" id="tornadoes-title">Tornado reports in the news</h2>
-            <p class="storm-description">Recent tornado-related reporting gathered across international news editions · Past 7 days.</p>
+            <h2 class="storm-title" id="tornadoes-title">Recent tornado reports</h2>
+            <p class="storm-description">Reported tornado locations from NOAA’s latest two Storm Prediction Center report periods.</p>
           </div>
           <span class="storm-status" id="tornadoes-status" aria-live="polite">LOADING</span>
         </div>
         <div class="storm-grid" id="tornadoes-grid" aria-live="polite">
-          <div class="storm-empty">Loading international tornado coverage…</div>
+          <div class="storm-empty">Loading official tornado reports…</div>
         </div>
-        <p class="storm-source-note">Google News editions: US, UK, Australia, Canada, India, and South Africa. News mentions are not verified tornado observations or a complete global event database; confirm incidents with local meteorological authorities.</p>
+        <p class="storm-source-note">NOAA Storm Prediction Center preliminary storm reports, U.S. coverage only. Points mark reported locations, not tornado tracks; reports may be incomplete or revised and are not final survey confirmations. ESWD does not allow this site to access its European event stream.</p>
       </section>
 
       <section class="earthquakes-section" aria-labelledby="earthquakes-title">
@@ -561,7 +569,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span> · Cyclones <span>GDACS</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span> · Cyclones <span>GDACS</span> · Tornado reports <span>NOAA SPC</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -605,6 +613,8 @@
     let selectedWildfires = [];
     let selectedEarthquakeLabels = [];
     let selectedEarthquakes = [];
+    let selectedTornadoLabels = [];
+    let selectedTornadoes = [];
     let selectedCountryLabel = null;
     let selectedCountryBoundary = null;
     let countryFeatures = [];
@@ -910,6 +920,11 @@
       vertexColors: true, size: 9, sizeAttenuation: false, depthTest: true
     });
     earthGroup.add(earthquakeMarkerGroup);
+    const tornadoMarkerGroup = new THREE.Group();
+    const tornadoMarkerMaterial = new THREE.PointsMaterial({
+      color: 0xff5964, size: 10, sizeAttenuation: false, depthTest: true
+    });
+    earthGroup.add(tornadoMarkerGroup);
     const flightTrailGroup = new THREE.Group();
     const flightTrailMaterial = new THREE.LineBasicMaterial({
       color: 0x70b7e9, transparent: true, opacity: 0.78, depthTest: true, depthWrite: false
@@ -976,7 +991,7 @@
             ? "COUNTRY · ZOOM IN TO SEE ITS CITIES"
             : "COUNTRY · CITY LABELS UNAVAILABLE";
       document.querySelector("#label-mode").textContent =
-        `${labelMode}${selectedFlightLabels.length ? " · FLIGHTS ON GLOBE" : ""}${selectedEarthquakeLabels.length ? " · EARTHQUAKES ON GLOBE" : ""}`;
+        `${labelMode}${selectedFlightLabels.length ? " · FLIGHTS ON GLOBE" : ""}${selectedEarthquakeLabels.length ? " · EARTHQUAKES ON GLOBE" : ""}${selectedTornadoLabels.length ? " · TORNADO REPORTS ON GLOBE" : ""}`;
       camera.updateMatrixWorld();
       const cameraDirection = camera.position.clone().sub(controls.target).normalize();
       const placeCandidates = isCitySearch
@@ -986,12 +1001,13 @@
         ...placeCandidates.filter((label) => label.isPrimary || label.kind === "country"),
         ...selectedFlightLabels,
         ...selectedEarthquakeLabels,
+        ...selectedTornadoLabels,
         ...selectedWildfireLabels,
         ...placeCandidates.filter((label) => !label.isPrimary && label.kind !== "country")
       ];
       const cells = new Map();
-      const cellSize = showCities || selectedFlightLabels.length || selectedEarthquakeLabels.length ? 64 : 140;
-      const collisionGap = showCities ? 8 : selectedFlightLabels.length || selectedEarthquakeLabels.length ? 4 : 0;
+      const cellSize = showCities || selectedFlightLabels.length || selectedEarthquakeLabels.length || selectedTornadoLabels.length ? 64 : 140;
+      const collisionGap = showCities ? 8 : selectedFlightLabels.length || selectedEarthquakeLabels.length || selectedTornadoLabels.length ? 4 : 0;
       for (const label of mapLabels) label.element.style.visibility = "hidden";
       for (const label of candidates) {
         const worldPosition = label.position.clone().applyQuaternion(earthGroup.quaternion);
@@ -1013,7 +1029,7 @@
         const width = label.element.offsetWidth;
         const height = label.element.offsetHeight;
         const labelOffset = label.kind === "country" ? 12 : 8;
-        const offsets = label.kind === "flight" || label.kind === "wildfire"
+        const offsets = label.kind === "flight" || label.kind === "wildfire" || label.kind === "tornado"
           ? [
               [width / 2 + 9, 0], [-width / 2 - 9, 0],
               [0, -height / 2 - 9], [0, height / 2 + 9],
@@ -1024,7 +1040,7 @@
         for (const [offsetX, offsetY] of offsets) {
           const labelX = x + offsetX;
           const labelY = y + offsetY;
-          const rect = label.kind === "flight" || label.kind === "wildfire"
+          const rect = label.kind === "flight" || label.kind === "wildfire" || label.kind === "tornado"
             ? {
                 left: labelX - width / 2,
                 right: labelX + width / 2,
@@ -1112,6 +1128,7 @@
       selectedWildfires = [];
       selectedEarthquakeLabels = [];
       selectedEarthquakes = [];
+      selectedTornadoLabels = [];
       selectedCountry = findCountry(location);
       if (location.isCity) {
         const primaryCityLabel = createMapLabel(
@@ -1200,6 +1217,7 @@
           earthGroup.add(selectedCountryBoundary);
         }
       }
+      renderTornadoMapLabels(selectedTornadoes);
       displayMapLabels();
     }
 
@@ -1419,10 +1437,10 @@
       if (activeHurricaneController) activeHurricaneController.abort();
       if (activeTornadoController) activeTornadoController.abort();
       fetchGlobalHurricanes();
-      fetchGlobalTornadoReports();
+      fetchTornadoReports();
       stormRefreshTimer = window.setInterval(() => {
         fetchGlobalHurricanes();
-        fetchGlobalTornadoReports();
+        fetchTornadoReports();
       }, 900000);
     }
 
@@ -1512,7 +1530,7 @@
       }
     }
 
-    async function fetchGlobalTornadoReports() {
+    async function fetchTornadoReports() {
       const requestId = ++tornadoRequest;
       if (activeTornadoController) activeTornadoController.abort();
       const controller = new AbortController();
@@ -1524,48 +1542,121 @@
         const response = await fetch("/api/tornadoes", { signal: controller.signal });
         if (!response.ok) {
           const error = await response.json().catch(() => ({}));
-          throw new Error(error.error || `International tornado news returned ${response.status}`);
+          throw new Error(error.error || `NOAA tornado reports returned ${response.status}`);
         }
         const data = await response.json();
         if (requestId !== tornadoRequest) return;
-        if (!Array.isArray(data.articles)) throw new Error("The international tornado-news feed returned invalid data.");
-        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const articles = data.articles.filter((article) => {
-          const publishedAt = parseStormDate(article.publishedAt);
-          return article && typeof article.title === "string" && Number.isFinite(publishedAt) &&
-            publishedAt >= cutoff && publishedAt <= Date.now();
-        }).slice(0, 12);
-        if (!articles.length) {
-          grid.innerHTML = '<div class="storm-empty">No recent tornado-related articles were found in the monitored news editions. This does not confirm that no tornadoes occurred.</div>';
+        if (!Array.isArray(data.features) || data.coverage !== "United States") {
+          throw new Error("The NOAA tornado report feed returned invalid data.");
+        }
+        const now = Date.now();
+        const cutoff = now - 48 * 60 * 60 * 1000;
+        const tornadoes = data.features.map((feature) => {
+          const properties = feature?.properties;
+          const coordinates = feature?.geometry?.coordinates;
+          const longitude = Number(coordinates?.[0]);
+          const latitude = Number(coordinates?.[1]);
+          const time = parseStormDate(properties?.time);
+          if (!properties || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+              !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+              !Number.isFinite(time) || time < cutoff || time > now) return null;
+          return {
+            id: String(feature.id || `${time}-${latitude}-${longitude}`),
+            latitude,
+            longitude,
+            time,
+            scale: String(properties.scale || ""),
+            location: String(properties.location || "Reported location"),
+            county: String(properties.county || ""),
+            state: String(properties.state || ""),
+            comments: String(properties.comments || "")
+          };
+        }).filter(Boolean)
+          .sort((a, b) => b.time - a.time);
+        renderTornadoReports(tornadoes);
+        const coverageStatus = data.partial ? " · PARTIAL FEED" : "";
+        status.textContent = `${tornadoes.length} REPORTS · U.S.${coverageStatus}`;
+        status.classList.toggle("storm-status-live", tornadoes.length > 0);
+        if (!tornadoes.length) {
+          grid.innerHTML = '<div class="storm-empty">NOAA returned no tornado reports from the latest report periods within the past 48 hours. This is U.S.-only preliminary reporting, not confirmation that no tornadoes occurred elsewhere.</div>';
         } else {
-          grid.innerHTML = articles.map((article) => {
-            const url = safeExternalUrl(article.url);
-            const title = url
-              ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(article.title)} ↗</a>`
-              : escapeHtml(article.title);
-            const published = new Date(article.publishedAt).toLocaleString([], {
+          grid.innerHTML = tornadoes.slice(0, 30).map((tornado) => {
+            const reportedAt = new Date(tornado.time).toLocaleString([], {
               timeZone: "UTC", dateStyle: "medium", timeStyle: "short"
             });
+            const place = [tornado.location, tornado.county && `${tornado.county} County`, tornado.state]
+              .filter(Boolean).join(", ");
             return `<article class="storm-card">
-              <h3 class="storm-card-title">${title}</h3>
+              <h3 class="storm-card-title">${escapeHtml(place)}</h3>
               <div class="storm-card-details">
-                <span>${escapeHtml(article.source || "News source")}</span>
-                <span>${escapeHtml(published)} UTC</span>
+                <span>${escapeHtml(tornado.scale || "Scale not rated")}</span>
+                <span>${escapeHtml(reportedAt)} UTC</span>
+                <span>${tornado.latitude.toFixed(3)}, ${tornado.longitude.toFixed(3)}</span>
+                <span><a href="${escapeHtml(data.sourceUrl)}" target="_blank" rel="noopener noreferrer">NOAA SPC source ↗</a></span>
+                ${tornado.comments ? `<span>${escapeHtml(tornado.comments)}</span>` : ""}
               </div>
             </article>`;
           }).join("");
         }
-        status.textContent = `${articles.length} ARTICLES${data.partial ? " · PARTIAL FEED" : ""}`;
-        status.classList.add("storm-status-live");
       } catch (error) {
         if (requestId !== tornadoRequest || error.name === "AbortError") return;
-        grid.innerHTML = `<div class="storm-empty">${escapeHtml(error.message || "International tornado news is temporarily unavailable.")} It will retry automatically.</div>`;
+        clearTornadoMarkers();
+        grid.innerHTML = `<div class="storm-empty">${escapeHtml(error.message || "Official tornado reports are temporarily unavailable.")} The feed will retry automatically.</div>`;
         status.textContent = "FEED UNAVAILABLE";
         status.classList.remove("storm-status-live");
-        console.error("International tornado-related news could not be loaded.", error);
+        console.error("Official tornado reports could not be loaded.", error);
       } finally {
         if (requestId === tornadoRequest) activeTornadoController = null;
       }
+    }
+
+    function renderTornadoReports(tornadoes) {
+      selectedTornadoes = tornadoes;
+      document.querySelector("#tornado-map-key").hidden = tornadoes.length === 0;
+      for (const marker of tornadoMarkerGroup.children) marker.geometry.dispose();
+      tornadoMarkerGroup.clear();
+      if (tornadoes.length) {
+        const positions = [];
+        for (const tornado of tornadoes) {
+          positions.push(...locationVector(tornado.latitude, tornado.longitude).multiplyScalar(1.026).toArray());
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        tornadoMarkerGroup.add(new THREE.Points(geometry, tornadoMarkerMaterial));
+      }
+      renderTornadoMapLabels(tornadoes);
+      displayMapLabels();
+    }
+
+    function renderTornadoMapLabels(tornadoes) {
+      for (const label of selectedTornadoLabels) {
+        label.element.remove();
+        const index = mapLabels.indexOf(label);
+        if (index >= 0) mapLabels.splice(index, 1);
+      }
+      selectedTornadoLabels = tornadoes.slice(0, 30).map((tornado) => {
+        const labelText = tornado.scale && tornado.scale !== "EFU"
+          ? tornado.scale.toUpperCase()
+          : "T";
+        const label = createMapLabel(labelText, tornado.latitude, tornado.longitude, "tornado", tornado.time);
+        label.element.title = `${tornado.location}${tornado.county ? `, ${tornado.county} County` : ""}, ${tornado.state} · ${new Date(tornado.time).toISOString()}`;
+        return label;
+      });
+      mapLabels.push(...selectedTornadoLabels);
+    }
+
+    function clearTornadoMarkers() {
+      for (const marker of tornadoMarkerGroup.children) marker.geometry.dispose();
+      tornadoMarkerGroup.clear();
+      for (const label of selectedTornadoLabels) {
+        label.element.remove();
+        const index = mapLabels.indexOf(label);
+        if (index >= 0) mapLabels.splice(index, 1);
+      }
+      selectedTornadoLabels = [];
+      selectedTornadoes = [];
+      document.querySelector("#tornado-map-key").hidden = true;
+      displayMapLabels();
     }
 
     function setupFlightTracking(location) {

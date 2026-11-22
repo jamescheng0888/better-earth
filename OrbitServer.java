@@ -21,7 +21,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,7 +51,7 @@ public class OrbitServer {
     private static final Map<String, CachedEarthquakeFeed> EARTHQUAKE_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedConditionsFeed> CONDITIONS_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedStormFeed> HURRICANE_CACHE = new ConcurrentHashMap<>();
-    private static final Map<String, CachedTornadoFeed> TORNADO_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CachedStormFeed> TORNADO_CACHE = new ConcurrentHashMap<>();
     private static final String FIRMS_SOURCE_URL = "https://firms.modaps.eosdis.nasa.gov/map/";
     private static final Map<String, String> MAP_DATA_URLS = Map.of(
         "/api/map/countries", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
@@ -60,14 +59,14 @@ public class OrbitServer {
     );
 
     private record Article(String title, String url, String source, String publishedAt) {}
-    private record NewsEdition(String language, String country) {}
     private record CachedFeed(Instant cachedAt, List<Article> articles) {}
     private record CachedFlightFeed(Instant cachedAt, String json) {}
     private record CachedWildfireFeed(Instant cachedAt, String json) {}
     private record CachedEarthquakeFeed(Instant cachedAt, String json) {}
     private record CachedConditionsFeed(Instant cachedAt, String json) {}
     private record CachedStormFeed(Instant cachedAt, String json) {}
-    private record CachedTornadoFeed(Instant cachedAt, List<Article> articles, boolean partial) {}
+    private record TornadoReport(String id, String time, String scale, String location, String county,
+        String state, double latitude, double longitude, String comments) {}
     private record FireCell(int latitude, int longitude) {}
 
     private static final class FireCluster {
@@ -808,123 +807,161 @@ public class OrbitServer {
             return;
         }
         Instant now = Instant.now();
-        CachedTornadoFeed cached = TORNADO_CACHE.get("global");
+        CachedStormFeed cached = TORNADO_CACHE.get("us");
         if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
-            send(exchange, 200, "application/json; charset=utf-8",
-                tornadoFeedJson(cached.articles(), cached.partial()));
+            send(exchange, 200, "application/geo+json; charset=utf-8", cached.json());
             return;
         }
 
-        List<NewsEdition> editions = List.of(
-            new NewsEdition("en-US", "US"),
-            new NewsEdition("en-GB", "GB"),
-            new NewsEdition("en-AU", "AU"),
-            new NewsEdition("en-CA", "CA"),
-            new NewsEdition("en-IN", "IN"),
-            new NewsEdition("en-ZA", "ZA")
-        );
+        LocalDate reportDate = LocalDate.now(ZoneOffset.UTC);
+        List<String> reportNames = List.of("today_torn.csv", "yesterday_torn.csv");
         List<CompletableFuture<HttpResponse<String>>> requests = new ArrayList<>();
-        for (NewsEdition edition : editions) {
-            String query = URLEncoder.encode("tornado when:7d", StandardCharsets.UTF_8);
-            URI feedUri = URI.create("https://news.google.com/rss/search?q=" + query +
-                "&hl=" + edition.language() + "&gl=" + edition.country() +
-                "&ceid=" + edition.country() + "%3Aen");
+        for (String reportName : reportNames) {
+            URI feedUri = URI.create("https://www.spc.noaa.gov/climo/reports/" + reportName);
             HttpRequest request = HttpRequest.newBuilder(feedUri)
-                .timeout(Duration.ofSeconds(20))
-                .header("User-Agent", "BetterEarthStormReports/1.0")
-                .header("Accept", "application/rss+xml, application/xml")
+                .timeout(Duration.ofSeconds(15))
+                .header("User-Agent", "BetterEarthStormReports/1.0 (NOAA SPC public report data)")
+                .header("Accept", "text/csv")
                 .GET()
                 .build();
             requests.add(HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
         }
 
-        List<Article> articles = new ArrayList<>();
+        List<TornadoReport> reports = new ArrayList<>();
         int successfulFeeds = 0;
         try {
             try {
-                CompletableFuture.allOf(requests.toArray(CompletableFuture[]::new)).get(25, TimeUnit.SECONDS);
+                CompletableFuture.allOf(requests.toArray(CompletableFuture[]::new)).get(18, TimeUnit.SECONDS);
             } catch (ExecutionException error) {
-                System.err.println("Some international tornado-news editions failed: " + error.getMessage());
+                System.err.println("A NOAA tornado report window failed: " + error.getMessage());
             }
-            Map<String, Article> uniqueArticles = new LinkedHashMap<>();
-            for (CompletableFuture<HttpResponse<String>> future : requests) {
+            for (int i = 0; i < requests.size(); i++) {
+                CompletableFuture<HttpResponse<String>> future = requests.get(i);
                 try {
                     HttpResponse<String> response = future.get();
                     if (response.statusCode() != 200) continue;
-                    List<Article> editionArticles = parseFeed(response.body());
-                    successfulFeeds++;
-                    for (Article article : editionArticles) {
-                        if (!isRelevantTornadoArticle(article.title())) continue;
-                        uniqueArticles.putIfAbsent(article.url(), article);
+                    if (response.body().isBlank()) {
+                        successfulFeeds++;
+                        continue;
                     }
-                } catch (ExecutionException | ParserConfigurationException | SAXException | IOException error) {
-                    System.err.println("A regional tornado-news edition failed: " + error.getMessage());
+                    if (!response.body().startsWith("Time,F_Scale,Location,County,State,Lat,Lon,Comments")) {
+                        System.err.println("NOAA SPC returned an invalid " + reportNames.get(i) + " report.");
+                        continue;
+                    }
+                    successfulFeeds++;
+                    parseTornadoReports(response.body(), reportDate.minusDays(i), now, reports);
+                } catch (ExecutionException error) {
+                    System.err.println("NOAA SPC " + reportNames.get(i) + " could not be read: " + error.getMessage());
                 }
             }
-            articles.addAll(uniqueArticles.values());
-            articles.sort(Comparator.comparing(
-                (Article article) -> parsePublishedAt(article.publishedAt())).reversed());
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
+            requests.forEach(future -> future.cancel(true));
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The international tornado-news request was interrupted.\"}");
+                "{\"error\":\"The NOAA tornado reports request was interrupted.\"}");
             return;
         } catch (TimeoutException error) {
             requests.forEach(future -> future.cancel(true));
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The international tornado-news feeds timed out.\"}");
+                "{\"error\":\"The NOAA tornado reports request timed out.\"}");
             return;
         }
         if (successfulFeeds == 0) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"No international tornado-news editions are currently available.\"}");
+                "{\"error\":\"The NOAA Storm Prediction Center tornado reports are currently unavailable.\"}");
             return;
         }
-        List<Article> recentArticles = articles.stream().limit(30).toList();
-        boolean partial = successfulFeeds < editions.size();
-        TORNADO_CACHE.put("global", new CachedTornadoFeed(now, recentArticles, partial));
-        send(exchange, 200, "application/json; charset=utf-8",
-            tornadoFeedJson(recentArticles, partial));
+        reports.sort(Comparator.comparing(TornadoReport::time).reversed());
+        String data = tornadoReportsJson(reports, successfulFeeds < reportNames.size());
+        TORNADO_CACHE.put("us", new CachedStormFeed(now, data));
+        send(exchange, 200, "application/geo+json; charset=utf-8", data);
     }
 
-    private static boolean isRelevantTornadoArticle(String title) {
-        String normalized = title.toLowerCase(java.util.Locale.ROOT);
-        if (!normalized.contains("tornado") && !normalized.contains("twister")) return false;
-        if (normalized.contains("tornado cash") || normalized.contains("tornado safety") ||
-            normalized.contains("tornado formation") || normalized.contains("tornado facts") ||
-            normalized.contains("tornado tour") || normalized.contains("tornado awareness") ||
-            normalized.contains("tornado drill") || normalized.contains("tornado warning") ||
-            normalized.contains("tornado watch") || normalized.contains("tornado risk") ||
-            normalized.contains("forecast") || normalized.contains("how do tornadoes") ||
-            normalized.contains("how does a tornado") || normalized.contains("liquid tornado") ||
-            normalized.contains("tornado -") || normalized.contains("tornado–") ||
-            normalized.contains("surviving") || normalized.contains("sheltered") ||
-            normalized.contains("anniversary") || normalized.contains("remembers") ||
-            normalized.contains("recalls")) return false;
-        return normalized.matches(".*\\b(confirms?|confirmed|possible|appears|sighting|damage|damaged|damages|destroyed|destroys|killed|kills|injur(?:ed|ies)|deadly|struck|hits|hit|touchdown|tore|survey|homes|reported|reports|swept|uprooted)\\b.*");
-    }
-
-    private static Instant parsePublishedAt(String publishedAt) {
-        try {
-            return ZonedDateTime.parse(publishedAt, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
-        } catch (DateTimeParseException error) {
-            return Instant.EPOCH;
+    private static void parseTornadoReports(String csv, LocalDate reportPeriodStart, Instant now,
+        List<TornadoReport> reports) {
+        String[] lines = csv.split("\\R");
+        if (lines.length < 2) return;
+        Map<String, Integer> columns = new HashMap<>();
+        List<String> header = parseCsvLine(lines[0]);
+        for (int i = 0; i < header.size(); i++) columns.put(header.get(i).trim(), i);
+        for (int i = 1; i < lines.length; i++) {
+            List<String> fields = parseCsvLine(lines[i]);
+            String rawTime = csvField(fields, columns, "Time");
+            String rawLatitude = csvField(fields, columns, "Lat");
+            String rawLongitude = csvField(fields, columns, "Lon");
+            if (rawTime.isBlank() || rawLatitude.isBlank() || rawLongitude.isBlank()) continue;
+            try {
+                String normalizedTime = rawTime.replace(":", "").trim();
+                LocalTime time = LocalTime.parse(normalizedTime, DateTimeFormatter.ofPattern("HHmm"));
+                LocalDate eventDate = time.getHour() < 12 ? reportPeriodStart.plusDays(1) : reportPeriodStart;
+                Instant reportedAt = ZonedDateTime.of(eventDate, time, ZoneOffset.UTC).toInstant();
+                if (reportedAt.isAfter(now) || reportedAt.isBefore(now.minus(Duration.ofHours(48)))) continue;
+                double latitude = Double.parseDouble(rawLatitude);
+                double longitude = Double.parseDouble(rawLongitude);
+                if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+                    !Double.isFinite(longitude) || longitude < -180 || longitude > 180) continue;
+                String location = csvField(fields, columns, "Location");
+                String county = csvField(fields, columns, "County");
+                String state = csvField(fields, columns, "State");
+                String scale = csvField(fields, columns, "F_Scale");
+                String comments = csvField(fields, columns, "Comments");
+                String id = eventDate + "-" + normalizedTime + "-" + state + "-" + rawLatitude + "-" + rawLongitude;
+                reports.add(new TornadoReport(id, reportedAt.toString(), scale, location, county, state,
+                    latitude, longitude, comments));
+            } catch (DateTimeParseException | NumberFormatException ignored) {
+                continue;
+            }
         }
     }
 
-    private static String tornadoFeedJson(List<Article> articles, boolean partial) {
-        StringBuilder json = new StringBuilder("{\"provider\":\"Google News international editions\"")
+    private static String csvField(List<String> fields, Map<String, Integer> columns, String name) {
+        Integer index = columns.get(name);
+        return index == null || index >= fields.size() ? "" : fields.get(index).trim();
+    }
+
+    private static List<String> parseCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean quoted = false;
+        for (int i = 0; i < line.length(); i++) {
+            char character = line.charAt(i);
+            if (character == '"') {
+                if (quoted && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    field.append('"');
+                    i++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (character == ',' && !quoted) {
+                fields.add(field.toString());
+                field.setLength(0);
+            } else {
+                field.append(character);
+            }
+        }
+        fields.add(field.toString());
+        return fields;
+    }
+
+    private static String tornadoReportsJson(List<TornadoReport> reports, boolean partial) {
+        StringBuilder json = new StringBuilder("{\"type\":\"FeatureCollection\"")
+            .append(",\"provider\":\"NOAA Storm Prediction Center\"")
+            .append(",\"coverage\":\"United States\"")
             .append(",\"partial\":").append(partial)
-            .append(",\"sourceEditions\":[\"United States\",\"United Kingdom\",\"Australia\",\"Canada\",\"India\",\"South Africa\"]")
-            .append(",\"articles\":[");
-        for (int i = 0; i < articles.size(); i++) {
+            .append(",\"sourceUrl\":\"https://www.spc.noaa.gov/climo/reports/\"")
+            .append(",\"features\":[");
+        for (int i = 0; i < reports.size(); i++) {
             if (i > 0) json.append(',');
-            Article article = articles.get(i);
-            json.append("{\"title\":").append(jsonString(article.title()))
-                .append(",\"url\":").append(jsonString(article.url()))
-                .append(",\"source\":").append(jsonString(article.source()))
-                .append(",\"publishedAt\":").append(jsonString(article.publishedAt()))
-                .append('}');
+            TornadoReport report = reports.get(i);
+            json.append("{\"type\":\"Feature\",\"id\":").append(jsonString(report.id()))
+                .append(",\"geometry\":{\"type\":\"Point\",\"coordinates\":[")
+                .append(report.longitude()).append(',').append(report.latitude())
+                .append("]},\"properties\":{\"time\":").append(jsonString(report.time()))
+                .append(",\"scale\":").append(jsonString(report.scale()))
+                .append(",\"location\":").append(jsonString(report.location()))
+                .append(",\"county\":").append(jsonString(report.county()))
+                .append(",\"state\":").append(jsonString(report.state()))
+                .append(",\"comments\":").append(jsonString(report.comments())).append("}}");
         }
         return json.append("]}").toString();
     }
