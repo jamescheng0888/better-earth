@@ -496,13 +496,14 @@
         <div class="flights-head">
           <div>
             <h2 class="flights-title" id="flights-title">Live flights nearby</h2>
-            <p class="flights-description" id="flight-description">Search a location to see aircraft within 50 miles.</p>
+            <p class="flights-description" id="flight-description">Worldwide ADS-B coverage · Search anywhere to see aircraft within 50 miles.</p>
           </div>
           <span class="flight-status" id="flight-status" aria-live="polite">WAITING FOR LOCATION</span>
         </div>
         <div class="flight-grid" id="flight-grid" aria-live="polite">
           <div class="flight-empty">Live aircraft will appear here after you search a location.</div>
         </div>
+        <p class="storm-source-note">Live positions from the <a href="https://adsb.lol/" target="_blank" rel="noopener noreferrer">ADSB.lol worldwide community receiver network</a>. Aircraft coverage varies with receiver availability, especially in remote areas.</p>
       </section>
 
       <section class="storm-section" aria-labelledby="hurricanes-title">
@@ -569,7 +570,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span> · Cyclones <span>GDACS</span> · Tornado reports <span>NOAA SPC</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Flights <span>ADSB.lol</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span> · Cyclones <span>GDACS</span> · Tornado reports <span>NOAA SPC</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -1696,7 +1697,7 @@
       }
 
       document.querySelector("#flight-description").textContent =
-        `Aircraft within 50 miles of ${flightCenter.label} · Updates every 5 minutes; paths build while this page is open.`;
+        `Worldwide ADS-B reports within 50 miles of ${flightCenter.label} · Updates every 5 minutes.`;
       document.querySelector("#flight-status").textContent = "CONNECTING";
       document.querySelector("#flight-status").classList.remove("flight-status-live");
       document.querySelector("#flight-grid").innerHTML =
@@ -2282,7 +2283,7 @@
         }
         const data = await response.json();
         if (requestId !== flightRequest) return;
-        if (!Array.isArray(data.ac) || !Number.isFinite(Number(data.now))) {
+        if (data.provider !== "ADSB.lol" || !Array.isArray(data.ac) || !Number.isFinite(Number(data.now))) {
           throw new Error("The aircraft feed returned invalid data.");
         }
         const cutoff = 2 * 60;
@@ -2309,7 +2310,7 @@
         recordFlightPositions(aircraft);
         renderLiveFlights(aircraft);
         document.querySelector("#flight-status").textContent =
-          `LIVE · ${new Date(Number(data.now)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+          `LIVE · ${data.provider} · ${new Date(Number(data.now)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
         document.querySelector("#flight-status").classList.add("flight-status-live");
       } catch (error) {
         if (requestId !== flightRequest || error.name === "AbortError") return;
@@ -2329,7 +2330,7 @@
       const grid = document.querySelector("#flight-grid");
       clearFlightLabels();
       if (!aircraft.length) {
-        grid.innerHTML = '<div class="flight-empty">No aircraft with a recent position were reported within 50 miles.</div>';
+        grid.innerHTML = '<div class="flight-empty">No aircraft with a recent position were reported within 50 miles of this location. Nearby receiver coverage can vary, particularly in remote areas.</div>';
         displayMapLabels();
         return;
       }

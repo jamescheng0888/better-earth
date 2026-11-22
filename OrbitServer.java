@@ -415,6 +415,7 @@ public class OrbitServer {
             send(exchange, 502, "application/json; charset=utf-8", "{\"error\":\"The live aircraft feed returned invalid data.\"}");
             return;
         }
+        data = "{\"provider\":\"ADSB.lol\"," + data.substring(1);
         if (FLIGHT_CACHE.size() >= 500) {
             FLIGHT_CACHE.entrySet().stream()
                 .min(Map.Entry.comparingByValue(java.util.Comparator.comparing(CachedFlightFeed::cachedAt)))
