@@ -267,6 +267,24 @@
       grid-column: 1 / -1; border: 1px dashed rgba(207,224,242,.12); border-radius: 8px;
       padding: 13px; color: #7d8995; font-size: 11px;
     }
+    .earthquakes-section { width: min(1168px, calc(100% - 44px)); margin: -12px auto 38px; }
+    .earthquakes-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+    .earthquakes-title { margin: 0; font: 600 17px var(--display); letter-spacing: -.025em; }
+    .earthquakes-description { margin: 5px 0 0; color: #74818e; font-size: 11px; }
+    .earthquakes-status { flex: 0 0 auto; color: #8995a2; font: 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    .earthquakes-status-live { color: #f2b84b; }
+    .earthquake-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin: 0 0 10px; color: #8d99a5; font: 9px var(--mono); }
+    .earthquake-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+    .earthquake-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .earthquake-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; max-height: 360px; overflow-y: auto; }
+    .earthquake-card { min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-left: 2px solid var(--quake-color, #68d391); border-radius: 8px; background: linear-gradient(145deg, rgba(20,28,38,.68), rgba(12,17,24,.75)); }
+    .earthquake-card-title { margin: 0; overflow-wrap: anywhere; color: #dce4ec; font: 500 11px/1.45 var(--sans); }
+    .earthquake-card-details { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; color: #84919d; font: 8px var(--mono); }
+    .earthquake-card a { color: #b6c8d8; text-decoration: none; }
+    .earthquake-card a:hover { text-decoration: underline; }
+    .earthquake-empty { grid-column: 1 / -1; border: 1px dashed rgba(207,224,242,.12); border-radius: 8px; padding: 13px; color: #7d8995; font-size: 11px; }
+    .earthquake-source-note { margin: 8px 0 0; color: #6f7b87; font: 8px/1.4 var(--mono); }
+    .map-label-earthquake { padding: 3px 6px; border-color: var(--quake-color, #68d391); border-radius: 50%; background: rgba(8,14,20,.96); color: var(--quake-color, #68d391); font: 700 9px/1.2 var(--mono); }
     .wildfire-panel {
       width: min(100%, 404px); margin-top: 21px; padding: 13px;
       border: 1px solid rgba(255,131,74,.2); border-radius: 10px;
@@ -317,6 +335,7 @@
       .globe-stats { right: 11%; }
       .news-grid { grid-template-columns: repeat(2, 1fr); }
       .flight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .earthquake-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 680px) {
       .topbar { height: 62px; }
@@ -334,6 +353,7 @@
       .results-section { width: calc(100% - 44px); margin-top: 35px; margin-bottom: 40px; }
       .news-grid { grid-template-columns: 1fr; }
       .flight-grid { grid-template-columns: 1fr 1fr; }
+      .earthquake-grid { grid-template-columns: 1fr; max-height: 300px; }
       .news-card { min-height: 142px; }
       .results-meta { font-size: 9px; }
       footer { align-items: flex-start; flex-direction: column; gap: 9px; }
@@ -421,6 +441,27 @@
         </div>
       </section>
 
+      <section class="earthquakes-section" aria-labelledby="earthquakes-title">
+        <div class="earthquakes-head">
+          <div>
+            <h2 class="earthquakes-title" id="earthquakes-title">Earthquakes nearby</h2>
+            <p class="earthquakes-description" id="earthquakes-description">Search a location to see earthquakes within 50 miles from the past 48 hours.</p>
+          </div>
+          <span class="earthquakes-status" id="earthquakes-status" aria-live="polite">WAITING FOR LOCATION</span>
+        </div>
+        <div class="earthquake-legend" aria-label="Earthquake marker colors by magnitude">
+          <span>MAGNITUDE</span>
+          <span class="earthquake-legend-item"><span class="earthquake-legend-dot" style="background:#68d391"></span>&lt; 3</span>
+          <span class="earthquake-legend-item"><span class="earthquake-legend-dot" style="background:#f2d35e"></span>3–3.9</span>
+          <span class="earthquake-legend-item"><span class="earthquake-legend-dot" style="background:#ff9e54"></span>4–4.9</span>
+          <span class="earthquake-legend-item"><span class="earthquake-legend-dot" style="background:#ff5964"></span>5+</span>
+        </div>
+        <div class="earthquake-grid" id="earthquake-grid" aria-live="polite">
+          <div class="earthquake-empty">Earthquake details will appear here after you search a location.</div>
+        </div>
+        <p class="earthquake-source-note">USGS earthquakes reported in the past 48 hours within 50 miles. Marker colors show magnitude, not local shaking intensity; actual shaking varies by distance and ground conditions.</p>
+      </section>
+
       <section class="results-section" aria-live="polite">
         <div class="results-head">
           <div>
@@ -436,7 +477,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Wildfires <span>NASA EONET</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Wildfires <span>NASA EONET / FIRMS</span> · Earthquakes <span>USGS</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -478,6 +519,8 @@
     let selectedFlightLabels = [];
     let selectedWildfireLabels = [];
     let selectedWildfires = [];
+    let selectedEarthquakeLabels = [];
+    let selectedEarthquakes = [];
     let selectedCountryLabel = null;
     let selectedCountryBoundary = null;
     let countryFeatures = [];
@@ -491,6 +534,9 @@
     let wildfireRequest = 0;
     let activeWildfireController = null;
     let wildfireRefreshTimer = null;
+    let earthquakeRequest = 0;
+    let activeEarthquakeController = null;
+    let earthquakeRefreshTimer = null;
     const flightTracks = new Map();
     const maxTrackedFlights = 48;
     const maxTrackPoints = 18;
@@ -767,6 +813,11 @@
       color: 0xff7447, size: 10, sizeAttenuation: false, depthTest: true
     });
     earthGroup.add(wildfireMarkerGroup);
+    const earthquakeMarkerGroup = new THREE.Group();
+    const earthquakeMarkerMaterial = new THREE.PointsMaterial({
+      vertexColors: true, size: 9, sizeAttenuation: false, depthTest: true
+    });
+    earthGroup.add(earthquakeMarkerGroup);
     const flightTrailGroup = new THREE.Group();
     const flightTrailMaterial = new THREE.LineBasicMaterial({
       color: 0x70b7e9, transparent: true, opacity: 0.78, depthTest: true, depthWrite: false
@@ -833,7 +884,7 @@
             ? "COUNTRY · ZOOM IN TO SEE ITS CITIES"
             : "COUNTRY · CITY LABELS UNAVAILABLE";
       document.querySelector("#label-mode").textContent =
-        `${labelMode}${selectedFlightLabels.length ? " · FLIGHTS ON GLOBE" : ""}`;
+        `${labelMode}${selectedFlightLabels.length ? " · FLIGHTS ON GLOBE" : ""}${selectedEarthquakeLabels.length ? " · EARTHQUAKES ON GLOBE" : ""}`;
       camera.updateMatrixWorld();
       const cameraDirection = camera.position.clone().sub(controls.target).normalize();
       const placeCandidates = isCitySearch
@@ -842,12 +893,13 @@
       const candidates = [
         ...placeCandidates.filter((label) => label.isPrimary || label.kind === "country"),
         ...selectedFlightLabels,
+        ...selectedEarthquakeLabels,
         ...selectedWildfireLabels,
         ...placeCandidates.filter((label) => !label.isPrimary && label.kind !== "country")
       ];
       const cells = new Map();
-      const cellSize = showCities || selectedFlightLabels.length ? 64 : 140;
-      const collisionGap = showCities ? 8 : selectedFlightLabels.length ? 4 : 0;
+      const cellSize = showCities || selectedFlightLabels.length || selectedEarthquakeLabels.length ? 64 : 140;
+      const collisionGap = showCities ? 8 : selectedFlightLabels.length || selectedEarthquakeLabels.length ? 4 : 0;
       for (const label of mapLabels) label.element.style.visibility = "hidden";
       for (const label of candidates) {
         const worldPosition = label.position.clone().applyQuaternion(earthGroup.quaternion);
@@ -966,6 +1018,8 @@
       selectedFlightLabels = [];
       selectedWildfireLabels = [];
       selectedWildfires = [];
+      selectedEarthquakeLabels = [];
+      selectedEarthquakes = [];
       selectedCountry = findCountry(location);
       if (location.isCity) {
         const primaryCityLabel = createMapLabel(
@@ -1263,6 +1317,7 @@
       document.querySelector("#latitude").value = location.lat;
       document.querySelector("#longitude").value = location.lon;
       setupFlightTracking(location);
+      setupEarthquakeTracking(location);
     }
 
     function setupFlightTracking(location) {
@@ -1309,6 +1364,177 @@
         '<div class="flight-empty">Connecting to the live aircraft feed…</div>';
       fetchLiveFlights();
       flightRefreshTimer = window.setInterval(fetchLiveFlights, 300000);
+    }
+
+    function setupEarthquakeTracking(location) {
+      if (earthquakeRefreshTimer) clearInterval(earthquakeRefreshTimer);
+      earthquakeRefreshTimer = null;
+      if (activeEarthquakeController) activeEarthquakeController.abort();
+      activeEarthquakeController = null;
+      earthquakeRequest++;
+      clearEarthquakeMarkers();
+      document.querySelector("#earthquakes-description").textContent =
+        `Checking for earthquakes in the past 48 hours within 50 miles of ${location.locality || location.name || "this location"}.`;
+      document.querySelector("#earthquakes-status").textContent = "LOADING";
+      document.querySelector("#earthquakes-status").classList.remove("earthquakes-status-live");
+      document.querySelector("#earthquake-grid").innerHTML =
+        '<div class="earthquake-empty">Loading recent earthquakes…</div>';
+      fetchNearbyEarthquakes(location);
+      earthquakeRefreshTimer = window.setInterval(() => fetchNearbyEarthquakes(location), 900000);
+    }
+
+    function earthquakeColor(magnitude) {
+      if (magnitude >= 5) return "#ff5964";
+      if (magnitude >= 4) return "#ff9e54";
+      if (magnitude >= 3) return "#f2d35e";
+      return "#68d391";
+    }
+
+    async function fetchNearbyEarthquakes(location) {
+      const requestId = ++earthquakeRequest;
+      if (activeEarthquakeController) activeEarthquakeController.abort();
+      const controller = new AbortController();
+      activeEarthquakeController = controller;
+      document.querySelector("#earthquakes-status").textContent = "UPDATING";
+      try {
+        const params = new URLSearchParams({
+          lat: String(location.lat),
+          lon: String(location.lon)
+        });
+        const response = await fetch(`/api/earthquakes?${params}`, { signal: controller.signal });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || `Earthquake feed returned ${response.status}`);
+        }
+        const data = await response.json();
+        if (requestId !== earthquakeRequest) return;
+        if (!Array.isArray(data.features)) throw new Error("USGS returned invalid earthquake data.");
+
+        const now = Date.now();
+        const cutoff = now - 48 * 60 * 60 * 1000;
+        const radiusKm = 50 * 1.609344;
+        const earthquakes = data.features
+          .map((feature) => {
+            const properties = feature?.properties;
+            const coordinates = feature?.geometry?.coordinates;
+            if (!properties || properties.mag == null || properties.time == null ||
+                !Array.isArray(coordinates) || coordinates.length < 3) return null;
+            const [longitude, latitude, depthKm] = coordinates.map(Number);
+            const magnitude = Number(properties.mag);
+            const time = Number(properties.time);
+            if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+                !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+                !Number.isFinite(magnitude) || !Number.isFinite(time) ||
+                time < cutoff || time > now) return null;
+            const distanceKm = distanceBetweenLocationsKm(location.lat, location.lon, latitude, longitude);
+            if (distanceKm > radiusKm) return null;
+            return {
+              id: String(feature.id || `${time}-${latitude}-${longitude}`),
+              title: String(properties.place || "Earthquake"),
+              url: properties.url,
+              latitude,
+              longitude,
+              depthKm: Number.isFinite(depthKm) ? depthKm : null,
+              magnitude,
+              magnitudeType: String(properties.magType || ""),
+              mmi: properties.mmi != null && Number.isFinite(Number(properties.mmi)) ? Number(properties.mmi) : null,
+              time,
+              distanceKm
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.magnitude - a.magnitude || b.time - a.time);
+        renderNearbyEarthquakes(earthquakes);
+        document.querySelector("#earthquakes-status").textContent = `${earthquakes.length} WITHIN 50 MI`;
+        document.querySelector("#earthquakes-status").classList.toggle("earthquakes-status-live", earthquakes.length > 0);
+        document.querySelector("#earthquakes-description").textContent =
+          `${earthquakes.length} earthquake${earthquakes.length === 1 ? "" : "s"} reported in the past 48 hours within 50 miles of ${location.locality || location.name || "this location"}.`;
+      } catch (error) {
+        if (requestId !== earthquakeRequest || error.name === "AbortError") return;
+        clearEarthquakeMarkers();
+        document.querySelector("#earthquakes-status").textContent = "FEED UNAVAILABLE";
+        document.querySelector("#earthquakes-status").classList.remove("earthquakes-status-live");
+        document.querySelector("#earthquake-grid").innerHTML =
+          `<div class="earthquake-empty">${escapeHtml(error.message || "USGS earthquake data is temporarily unavailable.")} The feed will retry automatically.</div>`;
+        console.error("Nearby earthquake data could not be loaded.", error);
+      } finally {
+        if (requestId === earthquakeRequest) activeEarthquakeController = null;
+      }
+    }
+
+    function renderNearbyEarthquakes(earthquakes) {
+      selectedEarthquakes = earthquakes;
+      const markerPositions = [];
+      const markerColors = [];
+      selectedEarthquakeLabels = earthquakes.map((earthquake) => {
+        const color = earthquakeColor(earthquake.magnitude);
+        const label = createMapLabel(
+          `M${earthquake.magnitude.toFixed(1)}`,
+          earthquake.latitude,
+          earthquake.longitude,
+          "earthquake",
+          earthquake.magnitude
+        );
+        label.latitude = earthquake.latitude;
+        label.longitude = earthquake.longitude;
+        label.element.style.setProperty("--quake-color", color);
+        label.element.title =
+          `${earthquake.title} · Magnitude ${earthquake.magnitude.toFixed(1)} · ${(earthquake.distanceKm / 1.609344).toFixed(1)} miles away`;
+        markerPositions.push(...locationVector(earthquake.latitude, earthquake.longitude).multiplyScalar(1.022).toArray());
+        const rgb = new THREE.Color(color);
+        markerColors.push(rgb.r, rgb.g, rgb.b);
+        return label;
+      });
+      if (markerPositions.length) {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(markerPositions, 3));
+        geometry.setAttribute("color", new THREE.Float32BufferAttribute(markerColors, 3));
+        earthquakeMarkerGroup.add(new THREE.Points(geometry, earthquakeMarkerMaterial));
+      }
+      mapLabels.push(...selectedEarthquakeLabels);
+
+      const grid = document.querySelector("#earthquake-grid");
+      if (!earthquakes.length) {
+        grid.innerHTML = '<div class="earthquake-empty">No earthquakes were reported within 50 miles in the past 48 hours.</div>';
+        displayMapLabels();
+        return;
+      }
+      grid.innerHTML = earthquakes.map((earthquake) => {
+        const color = earthquakeColor(earthquake.magnitude);
+        const url = safeExternalUrl(earthquake.url);
+        const place = url
+          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(earthquake.title)} ↗</a>`
+          : escapeHtml(earthquake.title);
+        const depth = earthquake.depthKm == null ? "Depth unavailable" : `Depth ${earthquake.depthKm.toFixed(1)} km`;
+        const mmi = earthquake.mmi == null ? "" : `<span>Est. shaking MMI ${earthquake.mmi.toFixed(1)}</span>`;
+        const reportedAt = new Date(earthquake.time).toLocaleString([], {
+          timeZone: "UTC", dateStyle: "medium", timeStyle: "short"
+        });
+        return `<article class="earthquake-card" style="--quake-color:${color}">
+          <h3 class="earthquake-card-title"><span style="color:${color}">M${earthquake.magnitude.toFixed(1)}</span> · ${place}</h3>
+          <div class="earthquake-card-details">
+            <span>${(earthquake.distanceKm / 1.609344).toFixed(1)} mi away</span>
+            <span>${escapeHtml(earthquake.magnitudeType || "Magnitude")}</span>
+            <span>${depth}</span>
+            ${mmi}
+            <span>${escapeHtml(reportedAt)} UTC</span>
+          </div>
+        </article>`;
+      }).join("");
+      displayMapLabels();
+    }
+
+    function clearEarthquakeMarkers() {
+      for (const marker of earthquakeMarkerGroup.children) marker.geometry.dispose();
+      earthquakeMarkerGroup.clear();
+      for (const label of selectedEarthquakeLabels) {
+        label.element.remove();
+        const index = mapLabels.indexOf(label);
+        if (index >= 0) mapLabels.splice(index, 1);
+      }
+      selectedEarthquakeLabels = [];
+      selectedEarthquakes = [];
+      displayMapLabels();
     }
 
     function setupWildfireTracking() {
