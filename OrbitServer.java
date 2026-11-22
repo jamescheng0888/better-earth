@@ -21,15 +21,22 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 import java.io.StringReader;
 
 public class OrbitServer {
@@ -44,6 +51,8 @@ public class OrbitServer {
     private static final Map<String, CachedWildfireFeed> WILDFIRE_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedEarthquakeFeed> EARTHQUAKE_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedConditionsFeed> CONDITIONS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CachedStormFeed> HURRICANE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CachedTornadoFeed> TORNADO_CACHE = new ConcurrentHashMap<>();
     private static final String FIRMS_SOURCE_URL = "https://firms.modaps.eosdis.nasa.gov/map/";
     private static final Map<String, String> MAP_DATA_URLS = Map.of(
         "/api/map/countries", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
@@ -51,11 +60,14 @@ public class OrbitServer {
     );
 
     private record Article(String title, String url, String source, String publishedAt) {}
+    private record NewsEdition(String language, String country) {}
     private record CachedFeed(Instant cachedAt, List<Article> articles) {}
     private record CachedFlightFeed(Instant cachedAt, String json) {}
     private record CachedWildfireFeed(Instant cachedAt, String json) {}
     private record CachedEarthquakeFeed(Instant cachedAt, String json) {}
     private record CachedConditionsFeed(Instant cachedAt, String json) {}
+    private record CachedStormFeed(Instant cachedAt, String json) {}
+    private record CachedTornadoFeed(Instant cachedAt, List<Article> articles, boolean partial) {}
     private record FireCell(int latitude, int longitude) {}
 
     private static final class FireCluster {
@@ -121,6 +133,14 @@ public class OrbitServer {
             }
             if (path.equals("/api/conditions")) {
                 serveConditions(exchange);
+                return;
+            }
+            if (path.equals("/api/hurricanes")) {
+                serveHurricanes(exchange);
+                return;
+            }
+            if (path.equals("/api/tornadoes")) {
+                serveTornadoes(exchange);
                 return;
             }
             if (MAP_DATA_URLS.containsKey(path)) {
@@ -733,7 +753,184 @@ public class OrbitServer {
         send(exchange, 200, "application/json; charset=utf-8", json.toString());
     }
 
-    private static List<Article> parseFeed(String xml) throws Exception {
+    private static void serveHurricanes(HttpExchange exchange) throws IOException {
+        if (!exchange.getRequestMethod().equals("GET")) {
+            send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"Use GET.\"}");
+            return;
+        }
+        Instant now = Instant.now();
+        CachedStormFeed cached = HURRICANE_CACHE.get("global");
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
+            send(exchange, 200, "application/geo+json; charset=utf-8", cached.json());
+            return;
+        }
+
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        URI feedUri = URI.create("https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH" +
+            "?eventtype=TC&fromdate=" + today.minusDays(30) + "&todate=" + today);
+        HttpRequest request = HttpRequest.newBuilder(feedUri)
+            .timeout(Duration.ofSeconds(25))
+            .header("User-Agent", "BetterEarthStormReports/1.0")
+            .header("Accept", "application/json")
+            .GET()
+            .build();
+        HttpResponse<String> response;
+        try {
+            response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (IOException error) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The global GDACS tropical-cyclone feed could not be reached.\"}");
+            return;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The GDACS tropical-cyclone request was interrupted.\"}");
+            return;
+        }
+        if (response.statusCode() != 200) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The GDACS tropical-cyclone feed returned HTTP " + response.statusCode() + ".\"}");
+            return;
+        }
+        String data = response.body();
+        if (!data.startsWith("{") || !data.contains("\"features\"")) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The GDACS tropical-cyclone feed returned invalid data.\"}");
+            return;
+        }
+        HURRICANE_CACHE.put("global", new CachedStormFeed(now, data));
+        send(exchange, 200, "application/geo+json; charset=utf-8", data);
+    }
+
+    private static void serveTornadoes(HttpExchange exchange) throws IOException {
+        if (!exchange.getRequestMethod().equals("GET")) {
+            send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"Use GET.\"}");
+            return;
+        }
+        Instant now = Instant.now();
+        CachedTornadoFeed cached = TORNADO_CACHE.get("global");
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
+            send(exchange, 200, "application/json; charset=utf-8",
+                tornadoFeedJson(cached.articles(), cached.partial()));
+            return;
+        }
+
+        List<NewsEdition> editions = List.of(
+            new NewsEdition("en-US", "US"),
+            new NewsEdition("en-GB", "GB"),
+            new NewsEdition("en-AU", "AU"),
+            new NewsEdition("en-CA", "CA"),
+            new NewsEdition("en-IN", "IN"),
+            new NewsEdition("en-ZA", "ZA")
+        );
+        List<CompletableFuture<HttpResponse<String>>> requests = new ArrayList<>();
+        for (NewsEdition edition : editions) {
+            String query = URLEncoder.encode("tornado when:7d", StandardCharsets.UTF_8);
+            URI feedUri = URI.create("https://news.google.com/rss/search?q=" + query +
+                "&hl=" + edition.language() + "&gl=" + edition.country() +
+                "&ceid=" + edition.country() + "%3Aen");
+            HttpRequest request = HttpRequest.newBuilder(feedUri)
+                .timeout(Duration.ofSeconds(20))
+                .header("User-Agent", "BetterEarthStormReports/1.0")
+                .header("Accept", "application/rss+xml, application/xml")
+                .GET()
+                .build();
+            requests.add(HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)));
+        }
+
+        List<Article> articles = new ArrayList<>();
+        int successfulFeeds = 0;
+        try {
+            try {
+                CompletableFuture.allOf(requests.toArray(CompletableFuture[]::new)).get(25, TimeUnit.SECONDS);
+            } catch (ExecutionException error) {
+                System.err.println("Some international tornado-news editions failed: " + error.getMessage());
+            }
+            Map<String, Article> uniqueArticles = new LinkedHashMap<>();
+            for (CompletableFuture<HttpResponse<String>> future : requests) {
+                try {
+                    HttpResponse<String> response = future.get();
+                    if (response.statusCode() != 200) continue;
+                    List<Article> editionArticles = parseFeed(response.body());
+                    successfulFeeds++;
+                    for (Article article : editionArticles) {
+                        if (!isRelevantTornadoArticle(article.title())) continue;
+                        uniqueArticles.putIfAbsent(article.url(), article);
+                    }
+                } catch (ExecutionException | ParserConfigurationException | SAXException | IOException error) {
+                    System.err.println("A regional tornado-news edition failed: " + error.getMessage());
+                }
+            }
+            articles.addAll(uniqueArticles.values());
+            articles.sort(Comparator.comparing(
+                (Article article) -> parsePublishedAt(article.publishedAt())).reversed());
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The international tornado-news request was interrupted.\"}");
+            return;
+        } catch (TimeoutException error) {
+            requests.forEach(future -> future.cancel(true));
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The international tornado-news feeds timed out.\"}");
+            return;
+        }
+        if (successfulFeeds == 0) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"No international tornado-news editions are currently available.\"}");
+            return;
+        }
+        List<Article> recentArticles = articles.stream().limit(30).toList();
+        boolean partial = successfulFeeds < editions.size();
+        TORNADO_CACHE.put("global", new CachedTornadoFeed(now, recentArticles, partial));
+        send(exchange, 200, "application/json; charset=utf-8",
+            tornadoFeedJson(recentArticles, partial));
+    }
+
+    private static boolean isRelevantTornadoArticle(String title) {
+        String normalized = title.toLowerCase(java.util.Locale.ROOT);
+        if (!normalized.contains("tornado") && !normalized.contains("twister")) return false;
+        if (normalized.contains("tornado cash") || normalized.contains("tornado safety") ||
+            normalized.contains("tornado formation") || normalized.contains("tornado facts") ||
+            normalized.contains("tornado tour") || normalized.contains("tornado awareness") ||
+            normalized.contains("tornado drill") || normalized.contains("tornado warning") ||
+            normalized.contains("tornado watch") || normalized.contains("tornado risk") ||
+            normalized.contains("forecast") || normalized.contains("how do tornadoes") ||
+            normalized.contains("how does a tornado") || normalized.contains("liquid tornado") ||
+            normalized.contains("tornado -") || normalized.contains("tornado–") ||
+            normalized.contains("surviving") || normalized.contains("sheltered") ||
+            normalized.contains("anniversary") || normalized.contains("remembers") ||
+            normalized.contains("recalls")) return false;
+        return normalized.matches(".*\\b(confirms?|confirmed|possible|appears|sighting|damage|damaged|damages|destroyed|destroys|killed|kills|injur(?:ed|ies)|deadly|struck|hits|hit|touchdown|tore|survey|homes|reported|reports|swept|uprooted)\\b.*");
+    }
+
+    private static Instant parsePublishedAt(String publishedAt) {
+        try {
+            return ZonedDateTime.parse(publishedAt, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+        } catch (DateTimeParseException error) {
+            return Instant.EPOCH;
+        }
+    }
+
+    private static String tornadoFeedJson(List<Article> articles, boolean partial) {
+        StringBuilder json = new StringBuilder("{\"provider\":\"Google News international editions\"")
+            .append(",\"partial\":").append(partial)
+            .append(",\"sourceEditions\":[\"United States\",\"United Kingdom\",\"Australia\",\"Canada\",\"India\",\"South Africa\"]")
+            .append(",\"articles\":[");
+        for (int i = 0; i < articles.size(); i++) {
+            if (i > 0) json.append(',');
+            Article article = articles.get(i);
+            json.append("{\"title\":").append(jsonString(article.title()))
+                .append(",\"url\":").append(jsonString(article.url()))
+                .append(",\"source\":").append(jsonString(article.source()))
+                .append(",\"publishedAt\":").append(jsonString(article.publishedAt()))
+                .append('}');
+        }
+        return json.append("]}").toString();
+    }
+
+    private static List<Article> parseFeed(String xml)
+        throws ParserConfigurationException, SAXException, IOException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);

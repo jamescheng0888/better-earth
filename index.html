@@ -267,6 +267,20 @@
       grid-column: 1 / -1; border: 1px dashed rgba(207,224,242,.12); border-radius: 8px;
       padding: 13px; color: #7d8995; font-size: 11px;
     }
+    .storm-section { width: min(1168px, calc(100% - 44px)); margin: 0 auto 30px; }
+    .storm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+    .storm-title { margin: 0; font: 600 17px var(--display); letter-spacing: -.025em; }
+    .storm-description { margin: 5px 0 0; color: #74818e; font-size: 11px; line-height: 1.5; }
+    .storm-status { flex: 0 0 auto; color: #8995a2; font: 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    .storm-status-live { color: #f2b84b; }
+    .storm-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+    .storm-card { min-width: 0; padding: 11px; border: 1px solid rgba(207,224,242,.1); border-left: 2px solid var(--storm-color, #8bc7df); border-radius: 8px; background: linear-gradient(145deg, rgba(20,28,38,.68), rgba(12,17,24,.75)); }
+    .storm-card-title { margin: 0; overflow-wrap: anywhere; color: #dce4ec; font: 500 11px/1.45 var(--sans); }
+    .storm-card-details { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; color: #84919d; font: 8px/1.4 var(--mono); }
+    .storm-card a { color: #b6c8d8; text-decoration: none; }
+    .storm-card a:hover { text-decoration: underline; }
+    .storm-empty { grid-column: 1 / -1; border: 1px dashed rgba(207,224,242,.12); border-radius: 8px; padding: 13px; color: #7d8995; font-size: 11px; line-height: 1.5; }
+    .storm-source-note { margin: 8px 0 0; color: #6f7b87; font: 8px/1.5 var(--mono); }
     .earthquakes-section { width: min(1168px, calc(100% - 44px)); margin: -12px auto 38px; }
     .earthquakes-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
     .earthquakes-title { margin: 0; font: 600 17px var(--display); letter-spacing: -.025em; }
@@ -356,6 +370,7 @@
       .globe-stats { right: 11%; }
       .news-grid { grid-template-columns: repeat(2, 1fr); }
       .flight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .storm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .earthquake-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 680px) {
@@ -374,6 +389,7 @@
       .results-section { width: calc(100% - 44px); margin-top: 35px; margin-bottom: 40px; }
       .news-grid { grid-template-columns: 1fr; }
       .flight-grid { grid-template-columns: 1fr 1fr; }
+      .storm-grid { grid-template-columns: 1fr; }
       .earthquake-grid { grid-template-columns: 1fr; max-height: 300px; }
       .news-card { min-height: 142px; }
       .results-meta { font-size: 9px; }
@@ -481,6 +497,34 @@
         </div>
       </section>
 
+      <section class="storm-section" aria-labelledby="hurricanes-title">
+        <div class="storm-head">
+          <div>
+            <h2 class="storm-title" id="hurricanes-title">Global hurricanes &amp; tropical cyclones</h2>
+            <p class="storm-description">Current or recently reported tropical-cyclone events worldwide · Past 30 days.</p>
+          </div>
+          <span class="storm-status" id="hurricanes-status" aria-live="polite">LOADING</span>
+        </div>
+        <div class="storm-grid" id="hurricanes-grid" aria-live="polite">
+          <div class="storm-empty">Loading global tropical-cyclone reports…</div>
+        </div>
+        <p class="storm-source-note">GDACS global event feed. Includes tropical cyclones, not only storms classified as hurricanes; alert level and track details are provided by GDACS.</p>
+      </section>
+
+      <section class="storm-section" aria-labelledby="tornadoes-title">
+        <div class="storm-head">
+          <div>
+            <h2 class="storm-title" id="tornadoes-title">Tornado reports in the news</h2>
+            <p class="storm-description">Recent tornado-related reporting gathered across international news editions · Past 7 days.</p>
+          </div>
+          <span class="storm-status" id="tornadoes-status" aria-live="polite">LOADING</span>
+        </div>
+        <div class="storm-grid" id="tornadoes-grid" aria-live="polite">
+          <div class="storm-empty">Loading international tornado coverage…</div>
+        </div>
+        <p class="storm-source-note">Google News editions: US, UK, Australia, Canada, India, and South Africa. News mentions are not verified tornado observations or a complete global event database; confirm incidents with local meteorological authorities.</p>
+      </section>
+
       <section class="earthquakes-section" aria-labelledby="earthquakes-title">
         <div class="earthquakes-head">
           <div>
@@ -517,7 +561,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span> · Cyclones <span>GDACS</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -580,6 +624,11 @@
     let conditionsRequest = 0;
     let activeConditionsController = null;
     let conditionsRefreshTimer = null;
+    let hurricaneRequest = 0;
+    let activeHurricaneController = null;
+    let tornadoRequest = 0;
+    let activeTornadoController = null;
+    let stormRefreshTimer = null;
     const flightTracks = new Map();
     const maxTrackedFlights = 48;
     const maxTrackPoints = 18;
@@ -1363,6 +1412,160 @@
       setupEarthquakeTracking(location);
       setupWildfireTracking(location);
       setupConditionsTracking(location);
+    }
+
+    function setupStormTracking() {
+      if (stormRefreshTimer) clearInterval(stormRefreshTimer);
+      if (activeHurricaneController) activeHurricaneController.abort();
+      if (activeTornadoController) activeTornadoController.abort();
+      fetchGlobalHurricanes();
+      fetchGlobalTornadoReports();
+      stormRefreshTimer = window.setInterval(() => {
+        fetchGlobalHurricanes();
+        fetchGlobalTornadoReports();
+      }, 900000);
+    }
+
+    function parseStormDate(value) {
+      if (typeof value !== "string" || !value.trim()) return NaN;
+      const normalized = value.includes("T") && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
+        ? `${value}Z`
+        : value;
+      return Date.parse(normalized);
+    }
+
+    async function fetchGlobalHurricanes() {
+      const requestId = ++hurricaneRequest;
+      if (activeHurricaneController) activeHurricaneController.abort();
+      const controller = new AbortController();
+      activeHurricaneController = controller;
+      const status = document.querySelector("#hurricanes-status");
+      const grid = document.querySelector("#hurricanes-grid");
+      status.textContent = "UPDATING";
+      try {
+        const response = await fetch("/api/hurricanes", { signal: controller.signal });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || `Global cyclone feed returned ${response.status}`);
+        }
+        const data = await response.json();
+        if (requestId !== hurricaneRequest) return;
+        if (!Array.isArray(data.features)) throw new Error("The GDACS feed returned invalid cyclone data.");
+        const now = Date.now();
+        const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+        const storms = data.features.map((feature) => {
+          const properties = feature?.properties;
+          if (!properties || String(properties.eventtype || "").toUpperCase() !== "TC") return null;
+          const startedAt = parseStormDate(properties.fromdate);
+          const endedAt = parseStormDate(properties.todate);
+          const current = properties.iscurrent === true || String(properties.iscurrent).toLowerCase() === "true";
+          if ((!Number.isFinite(startedAt) && !Number.isFinite(endedAt)) ||
+              (!current && (!Number.isFinite(endedAt) || endedAt < cutoff || endedAt > now))) return null;
+          return {
+            name: String(properties.name || "Unnamed tropical cyclone"),
+            country: String(properties.country || "Location unavailable"),
+            alert: String(properties.alertlevel || "Unspecified"),
+            startedAt,
+            endedAt,
+            current,
+            reportUrl: safeExternalUrl(properties.url?.report)
+          };
+        }).filter(Boolean)
+          .sort((a, b) => Number(b.current) - Number(a.current) ||
+            (Number.isFinite(b.endedAt) ? b.endedAt : 0) - (Number.isFinite(a.endedAt) ? a.endedAt : 0))
+          .slice(0, 9);
+        if (!storms.length) {
+          grid.innerHTML = '<div class="storm-empty">No active or recently reported tropical-cyclone events were returned for the past 30 days.</div>';
+        } else {
+          grid.innerHTML = storms.map((storm) => {
+            const report = storm.reportUrl
+              ? `<a href="${escapeHtml(storm.reportUrl)}" target="_blank" rel="noopener noreferrer">GDACS details ↗</a>`
+              : "GDACS";
+            const dateRange = [storm.startedAt, storm.endedAt]
+              .filter(Number.isFinite)
+              .map((time) => new Date(time).toLocaleDateString([], { timeZone: "UTC", dateStyle: "medium" }))
+              .join(" – ");
+            const alertColor = storm.alert.toLowerCase() === "red" ? "#ff7078"
+              : storm.alert.toLowerCase() === "orange" ? "#ffad62" : "#8bc7df";
+            return `<article class="storm-card" style="--storm-color:${alertColor}">
+              <h3 class="storm-card-title">${escapeHtml(storm.name)}</h3>
+              <div class="storm-card-details">
+                <span>${storm.current ? "CURRENT" : "RECENT"}</span>
+                <span>${escapeHtml(storm.alert)} alert</span>
+                <span>${escapeHtml(storm.country)}</span>
+                ${dateRange ? `<span>${escapeHtml(dateRange)} UTC</span>` : ""}
+                <span>${report}</span>
+              </div>
+            </article>`;
+          }).join("");
+        }
+        status.textContent = `${storms.length} EVENTS · GDACS`;
+        status.classList.add("storm-status-live");
+      } catch (error) {
+        if (requestId !== hurricaneRequest || error.name === "AbortError") return;
+        grid.innerHTML = `<div class="storm-empty">${escapeHtml(error.message || "The global cyclone feed is temporarily unavailable.")} It will retry automatically.</div>`;
+        status.textContent = "FEED UNAVAILABLE";
+        status.classList.remove("storm-status-live");
+        console.error("Global tropical-cyclone reports could not be loaded.", error);
+      } finally {
+        if (requestId === hurricaneRequest) activeHurricaneController = null;
+      }
+    }
+
+    async function fetchGlobalTornadoReports() {
+      const requestId = ++tornadoRequest;
+      if (activeTornadoController) activeTornadoController.abort();
+      const controller = new AbortController();
+      activeTornadoController = controller;
+      const status = document.querySelector("#tornadoes-status");
+      const grid = document.querySelector("#tornadoes-grid");
+      status.textContent = "UPDATING";
+      try {
+        const response = await fetch("/api/tornadoes", { signal: controller.signal });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || `International tornado news returned ${response.status}`);
+        }
+        const data = await response.json();
+        if (requestId !== tornadoRequest) return;
+        if (!Array.isArray(data.articles)) throw new Error("The international tornado-news feed returned invalid data.");
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const articles = data.articles.filter((article) => {
+          const publishedAt = parseStormDate(article.publishedAt);
+          return article && typeof article.title === "string" && Number.isFinite(publishedAt) &&
+            publishedAt >= cutoff && publishedAt <= Date.now();
+        }).slice(0, 12);
+        if (!articles.length) {
+          grid.innerHTML = '<div class="storm-empty">No recent tornado-related articles were found in the monitored news editions. This does not confirm that no tornadoes occurred.</div>';
+        } else {
+          grid.innerHTML = articles.map((article) => {
+            const url = safeExternalUrl(article.url);
+            const title = url
+              ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(article.title)} ↗</a>`
+              : escapeHtml(article.title);
+            const published = new Date(article.publishedAt).toLocaleString([], {
+              timeZone: "UTC", dateStyle: "medium", timeStyle: "short"
+            });
+            return `<article class="storm-card">
+              <h3 class="storm-card-title">${title}</h3>
+              <div class="storm-card-details">
+                <span>${escapeHtml(article.source || "News source")}</span>
+                <span>${escapeHtml(published)} UTC</span>
+              </div>
+            </article>`;
+          }).join("");
+        }
+        status.textContent = `${articles.length} ARTICLES${data.partial ? " · PARTIAL FEED" : ""}`;
+        status.classList.add("storm-status-live");
+      } catch (error) {
+        if (requestId !== tornadoRequest || error.name === "AbortError") return;
+        grid.innerHTML = `<div class="storm-empty">${escapeHtml(error.message || "International tornado news is temporarily unavailable.")} It will retry automatically.</div>`;
+        status.textContent = "FEED UNAVAILABLE";
+        status.classList.remove("storm-status-live");
+        console.error("International tornado-related news could not be loaded.", error);
+      } finally {
+        if (requestId === tornadoRequest) activeTornadoController = null;
+      }
     }
 
     function setupFlightTracking(location) {
@@ -2404,6 +2607,7 @@
       });
     });
     setupWildfireTracking();
+    setupStormTracking();
   </script>
 </body>
 </html>
