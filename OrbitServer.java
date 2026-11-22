@@ -181,7 +181,7 @@ public class OrbitServer {
         }
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(
-                "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&days=30&limit=1000"))
+                "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=all&days=30&limit=1000"))
             .timeout(Duration.ofSeconds(20))
             .header("User-Agent", "BetterEarthWildfireMap/1.0")
             .GET()

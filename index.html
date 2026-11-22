@@ -379,14 +379,14 @@
             <div class="wildfire-panel-head">
               <div>
                 <h2 class="wildfire-panel-title" id="wildfire-panel-title"><span class="wildfire-panel-key" aria-hidden="true">●</span>Wildfires nearby</h2>
-                <p class="wildfire-panel-description" id="wildfire-description">Search a location to check for reported wildfires within 50 miles.</p>
+                <p class="wildfire-panel-description" id="wildfire-description">Search a location to check for wildfire reports from the past 48 hours within 50 miles.</p>
               </div>
               <span class="wildfire-status" id="wildfire-status" aria-live="polite">WAITING</span>
             </div>
             <div class="wildfire-list" id="wildfire-list" aria-live="polite">
-              <div class="wildfire-empty">Active wildfire reports will appear here after you search a location.</div>
+              <div class="wildfire-empty">Wildfire reports from the past 48 hours will appear here after you search a location.</div>
             </div>
-            <p class="wildfire-source-note">NASA EONET active incidents; prescribed burns excluded. Reports may be delayed.</p>
+            <p class="wildfire-source-note">NASA EONET reports observed in the past 48 hours; prescribed burns excluded. Reports may be delayed or incomplete.</p>
           </section>
         </div>
 
@@ -1321,11 +1321,11 @@
       clearWildfireMarkers();
 
       document.querySelector("#wildfire-description").textContent =
-        `Checking for reported wildfires within 50 miles of ${location.locality || location.name || "this location"}.`;
+        `Checking for wildfire reports from the past 48 hours within 50 miles of ${location.locality || location.name || "this location"}.`;
       document.querySelector("#wildfire-status").textContent = "LOADING";
       document.querySelector("#wildfire-status").classList.remove("wildfire-status-live");
       document.querySelector("#wildfire-list").innerHTML =
-        '<div class="wildfire-empty">Loading active fire reports…</div>';
+        '<div class="wildfire-empty">Loading recent fire reports…</div>';
       fetchNearbyWildfires(location);
       wildfireRefreshTimer = window.setInterval(() => fetchNearbyWildfires(location), 900000);
     }
@@ -1362,10 +1362,18 @@
         if (!Array.isArray(data.events)) throw new Error("NASA EONET returned invalid wildfire data.");
 
         const radiusKm = 50 * 1.609344;
+        const now = Date.now();
+        const cutoff = now - 48 * 60 * 60 * 1000;
         const fires = data.events
           .filter((event) => typeof event.title === "string" && !/\bprescribed fire\b|\bRX\b/i.test(event.title))
           .map((event) => {
-            const observation = Array.isArray(event.geometry) ? event.geometry[event.geometry.length - 1] : null;
+            const observations = Array.isArray(event.geometry) ? event.geometry : [];
+            const observation = observations
+              .filter((item) => item && typeof item.date === "string" && Number.isFinite(Date.parse(item.date)))
+              .reduce((latest, item) => !latest || Date.parse(item.date) > Date.parse(latest.date) ? item : latest, null);
+            if (!observation) return null;
+            const reportedAt = Date.parse(observation.date);
+            if (reportedAt < cutoff || reportedAt > now) return null;
             const coordinates = wildfireCoordinates(observation);
             if (!coordinates) return null;
             return {
@@ -1385,7 +1393,7 @@
           `${fires.length} WITHIN 50 MI`;
         document.querySelector("#wildfire-status").classList.toggle("wildfire-status-live", fires.length > 0);
         document.querySelector("#wildfire-description").textContent =
-          `Reported active wildfires within 50 miles of ${location.locality || location.name || "this location"}.`;
+          `Wildfires with reports from the past 48 hours within 50 miles of ${location.locality || location.name || "this location"}.`;
       } catch (error) {
         if (requestId !== wildfireRequest || error.name === "AbortError") return;
         clearWildfireMarkers();
@@ -1422,7 +1430,7 @@
       document.querySelector("#wildfire-map-key").hidden = fires.length === 0;
       const list = document.querySelector("#wildfire-list");
       if (!fires.length) {
-        list.innerHTML = '<div class="wildfire-empty">No active wildfire reports were found within 50 miles. NASA event reports may be delayed or incomplete.</div>';
+        list.innerHTML = '<div class="wildfire-empty">No wildfire reports from the past 48 hours were found within 50 miles. NASA reports may be delayed or incomplete.</div>';
         displayMapLabels();
         return;
       }
