@@ -378,22 +378,22 @@
           <section class="wildfire-panel" aria-labelledby="wildfire-panel-title">
             <div class="wildfire-panel-head">
               <div>
-                <h2 class="wildfire-panel-title" id="wildfire-panel-title"><span class="wildfire-panel-key" aria-hidden="true">●</span>Wildfires nearby</h2>
-                <p class="wildfire-panel-description" id="wildfire-description">Search a location to check for wildfire reports from the past 48 hours within 50 miles.</p>
+                <h2 class="wildfire-panel-title" id="wildfire-panel-title"><span class="wildfire-panel-key" aria-hidden="true">●</span>Global fire activity</h2>
+                <p class="wildfire-panel-description" id="wildfire-description">Top fire-detection clusters reported worldwide in the past 48 hours.</p>
               </div>
               <span class="wildfire-status" id="wildfire-status" aria-live="polite">WAITING</span>
             </div>
             <div class="wildfire-list" id="wildfire-list" aria-live="polite">
-              <div class="wildfire-empty">Wildfire reports from the past 48 hours will appear here after you search a location.</div>
+              <div class="wildfire-empty">Loading global satellite fire detections…</div>
             </div>
-            <p class="wildfire-source-note">NASA EONET reports observed in the past 48 hours; prescribed burns excluded. Reports may be delayed or incomplete.</p>
+            <p class="wildfire-source-note">NASA FIRMS VIIRS satellite heat detections from the past 48 hours (UTC). Clusters group detections into roughly 0.1° grid cells and rank by summed fire radiative power, not burned area. These are estimates, not confirmed incidents, and may include other heat sources.</p>
           </section>
         </div>
 
         <div class="globe-column">
           <div class="globe-area" aria-label="Interactive 3D Earth">
             <canvas id="globe" aria-label="3D globe showing the selected location"></canvas>
-            <div class="map-legend" aria-hidden="true"><span class="legend-country">●</span><span id="label-mode">SEARCH A LOCATION TO REVEAL ITS COUNTRY</span><span class="wildfire-map-key" id="wildfire-map-key" hidden><span class="wildfire-map-key-symbol">●</span> WILDFIRE</span></div>
+            <div class="map-legend" aria-hidden="true"><span class="legend-country">●</span><span id="label-mode">SEARCH A LOCATION TO REVEAL ITS COUNTRY</span><span class="wildfire-map-key" id="wildfire-map-key" hidden><span class="wildfire-map-key-symbol">●</span> FIRE ACTIVITY CLUSTER</span></div>
             <div class="map-label-layer" id="map-label-layer" aria-hidden="true"></div>
             <div class="imagery-credit" id="imagery-credit" aria-live="polite"></div>
             <div class="globe-stats"><span>EARTH / <strong>01</strong></span><span>ROTATION: <strong id="rotation-state">ACTIVE</strong></span><span>VIEW: <strong id="view-coords">000° / 000°</strong></span></div>
@@ -1263,7 +1263,6 @@
       document.querySelector("#latitude").value = location.lat;
       document.querySelector("#longitude").value = location.lon;
       setupFlightTracking(location);
-      setupWildfireTracking(location);
     }
 
     function setupFlightTracking(location) {
@@ -1312,7 +1311,7 @@
       flightRefreshTimer = window.setInterval(fetchLiveFlights, 300000);
     }
 
-    function setupWildfireTracking(location) {
+    function setupWildfireTracking() {
       if (wildfireRefreshTimer) clearInterval(wildfireRefreshTimer);
       wildfireRefreshTimer = null;
       if (activeWildfireController) activeWildfireController.abort();
@@ -1321,31 +1320,16 @@
       clearWildfireMarkers();
 
       document.querySelector("#wildfire-description").textContent =
-        `Checking for wildfire reports from the past 48 hours within 50 miles of ${location.locality || location.name || "this location"}.`;
+        "Loading global satellite fire detections from the past 48 hours.";
       document.querySelector("#wildfire-status").textContent = "LOADING";
       document.querySelector("#wildfire-status").classList.remove("wildfire-status-live");
       document.querySelector("#wildfire-list").innerHTML =
-        '<div class="wildfire-empty">Loading recent fire reports…</div>';
-      fetchNearbyWildfires(location);
-      wildfireRefreshTimer = window.setInterval(() => fetchNearbyWildfires(location), 900000);
+        '<div class="wildfire-empty">Loading global satellite fire detections…</div>';
+      fetchNearbyWildfires();
+      wildfireRefreshTimer = window.setInterval(fetchNearbyWildfires, 900000);
     }
 
-    function wildfireCoordinates(geometry) {
-      if (!geometry || !Array.isArray(geometry.coordinates)) return null;
-      if (geometry.type === "Point") {
-        const [longitude, latitude] = geometry.coordinates;
-        return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
-      }
-      if (geometry.type !== "Polygon" || !Array.isArray(geometry.coordinates[0])) return null;
-      const ring = geometry.coordinates[0];
-      const points = ring.length > 1 ? ring.slice(0, -1) : ring;
-      if (!points.length) return null;
-      const longitude = points.reduce((total, point) => total + Number(point[0]), 0) / points.length;
-      const latitude = points.reduce((total, point) => total + Number(point[1]), 0) / points.length;
-      return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
-    }
-
-    async function fetchNearbyWildfires(location) {
+    async function fetchNearbyWildfires() {
       const requestId = ++wildfireRequest;
       if (activeWildfireController) activeWildfireController.abort();
       const controller = new AbortController();
@@ -1359,49 +1343,33 @@
         }
         const data = await response.json();
         if (requestId !== wildfireRequest) return;
-        if (!Array.isArray(data.events)) throw new Error("NASA EONET returned invalid wildfire data.");
-
-        const radiusKm = 50 * 1.609344;
+        if (data.provider !== "NASA FIRMS VIIRS SNPP NRT" || !Array.isArray(data.events)) {
+          throw new Error("NASA FIRMS returned invalid fire detection data.");
+        }
         const now = Date.now();
         const cutoff = now - 48 * 60 * 60 * 1000;
         const fires = data.events
-          .filter((event) => typeof event.title === "string" && !/\bprescribed fire\b|\bRX\b/i.test(event.title))
-          .map((event) => {
-            const observations = Array.isArray(event.geometry) ? event.geometry : [];
-            const observation = observations
-              .filter((item) => item && typeof item.date === "string" && Number.isFinite(Date.parse(item.date)))
-              .reduce((latest, item) => !latest || Date.parse(item.date) > Date.parse(latest.date) ? item : latest, null);
-            if (!observation) return null;
-            const reportedAt = Date.parse(observation.date);
-            if (reportedAt < cutoff || reportedAt > now) return null;
-            const coordinates = wildfireCoordinates(observation);
-            if (!coordinates) return null;
-            return {
-              ...event,
-              ...coordinates,
-              reportedAt: observation.date,
-              distanceKm: distanceBetweenLocationsKm(
-                location.lat, location.lon, coordinates.latitude, coordinates.longitude
-              )
-            };
-          })
-          .filter((event) => event && event.distanceKm <= radiusKm)
-          .sort((a, b) => a.distanceKm - b.distanceKm)
-          .slice(0, 8);
+          .filter((event) => typeof event.title === "string" &&
+            Number.isFinite(event.latitude) && event.latitude >= -90 && event.latitude <= 90 &&
+            Number.isFinite(event.longitude) && event.longitude >= -180 && event.longitude <= 180 &&
+            Number.isFinite(event.detectionCount) && event.detectionCount > 0 &&
+            Number.isFinite(event.totalFrp) && event.totalFrp >= 0 &&
+            Number.isFinite(Date.parse(event.lastDetected)) &&
+            Date.parse(event.lastDetected) >= cutoff && Date.parse(event.lastDetected) <= now);
         renderNearbyWildfires(fires);
         document.querySelector("#wildfire-status").textContent =
-          `${fires.length} WITHIN 50 MI`;
+          `${fires.length} GLOBAL CLUSTERS`;
         document.querySelector("#wildfire-status").classList.toggle("wildfire-status-live", fires.length > 0);
         document.querySelector("#wildfire-description").textContent =
-          `Wildfires with reports from the past 48 hours within 50 miles of ${location.locality || location.name || "this location"}.`;
+          `Top ${fires.length} high-activity satellite detection clusters worldwide from the past 48 hours (UTC).`;
       } catch (error) {
         if (requestId !== wildfireRequest || error.name === "AbortError") return;
         clearWildfireMarkers();
         document.querySelector("#wildfire-status").textContent = "FEED UNAVAILABLE";
         document.querySelector("#wildfire-status").classList.remove("wildfire-status-live");
         document.querySelector("#wildfire-list").innerHTML =
-          `<div class="wildfire-empty">${escapeHtml(error.message || "Wildfire reports are temporarily unavailable.")} Try another search later.</div>`;
-        console.error("Nearby wildfire reports could not be loaded.", error);
+          `<div class="wildfire-empty">${escapeHtml(error.message || "Wildfire reports are temporarily unavailable.")} The feed will retry automatically.</div>`;
+        console.error("Global wildfire detections could not be loaded.", error);
       } finally {
         if (requestId === wildfireRequest) activeWildfireController = null;
       }
@@ -1410,14 +1378,14 @@
     function renderNearbyWildfires(fires) {
       selectedWildfires = fires;
       const markerPositions = [];
-      selectedWildfireLabels = fires.map((fire) => {
-        const label = createMapLabel(fire.title, fire.latitude, fire.longitude, "wildfire", fire.distanceKm);
+      selectedWildfireLabels = fires.map((fire, index) => {
+        const label = createMapLabel(fire.title, fire.latitude, fire.longitude, "wildfire", fire.totalFrp);
         const symbol = document.createElement("span");
         symbol.className = "wildfire-label-symbol";
         symbol.textContent = "●";
         symbol.setAttribute("aria-hidden", "true");
-        label.element.replaceChildren(symbol, document.createTextNode(fire.title));
-        label.element.title = `${fire.title} · ${(fire.distanceKm / 1.609344).toFixed(1)} miles away`;
+        label.element.replaceChildren(symbol, document.createTextNode(`#${index + 1}`));
+        label.element.title = `${fire.title} · ${fire.detectionCount} detections`;
         markerPositions.push(...locationVector(fire.latitude, fire.longitude).multiplyScalar(1.02).toArray());
         return label;
       });
@@ -1430,28 +1398,29 @@
       document.querySelector("#wildfire-map-key").hidden = fires.length === 0;
       const list = document.querySelector("#wildfire-list");
       if (!fires.length) {
-        list.innerHTML = '<div class="wildfire-empty">No wildfire reports from the past 48 hours were found within 50 miles. NASA reports may be delayed or incomplete.</div>';
+        list.innerHTML = '<div class="wildfire-empty">No satellite fire detections were reported in the past 48 hours. NASA FIRMS coverage and processing can be delayed or affected by clouds.</div>';
         displayMapLabels();
         return;
       }
-      list.innerHTML = fires.map((fire) => {
-        const source = Array.isArray(fire.sources) ? fire.sources[0] : null;
-        const sourceUrl = safeExternalUrl(source?.url || fire.link);
+      list.innerHTML = fires.map((fire, index) => {
+        const sourceUrl = safeExternalUrl(fire.sourceUrl);
         const sourceLink = sourceUrl
-          ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source: ${escapeHtml(source?.id || "NASA EONET")} ↗</a>`
-          : `Source: ${escapeHtml(source?.id || "NASA EONET")}`;
-        const magnitude = Number.isFinite(Number(fire.geometry?.at(-1)?.magnitudeValue))
-          ? `${Number(fire.geometry.at(-1).magnitudeValue).toLocaleString()} ${escapeHtml(fire.geometry.at(-1).magnitudeUnit || "reported")}`
-          : "Size not reported";
-        const reportDate = fire.reportedAt && !Number.isNaN(Date.parse(fire.reportedAt))
-          ? new Date(fire.reportedAt).toLocaleDateString()
-          : "Date unavailable";
+          ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">NASA FIRMS map ↗</a>`
+          : "NASA FIRMS";
+        const reportedAt = new Date(fire.lastDetected);
+        const reportDate = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium", timeStyle: "short", timeZone: "UTC"
+        }).format(reportedAt);
+        const latitude = Math.abs(fire.latitude).toFixed(2) + (fire.latitude < 0 ? "°S" : "°N");
+        const longitude = Math.abs(fire.longitude).toFixed(2) + (fire.longitude < 0 ? "°W" : "°E");
         return `<article class="wildfire-card">
-          <h3 class="wildfire-card-title">${escapeHtml(fire.title)}</h3>
+          <h3 class="wildfire-card-title">#${index + 1} · ${escapeHtml(fire.title)}</h3>
           <div class="wildfire-card-details">
-            <span>${(fire.distanceKm / 1.609344).toFixed(1)} mi away</span>
-            <span>${magnitude}</span>
-            <span>Reported ${escapeHtml(reportDate)}</span>
+            <span>${fire.detectionCount.toLocaleString()} detections</span>
+            <span>Summed FRP ${fire.totalFrp.toLocaleString(undefined, { maximumFractionDigits: 1 })} MW</span>
+            <span>${fire.highConfidenceDetections.toLocaleString()} high-confidence</span>
+            <span>${latitude}, ${longitude}</span>
+            <span>Last detected ${escapeHtml(reportDate)} UTC</span>
             <span>${sourceLink}</span>
           </div>
         </article>`;
@@ -1922,6 +1891,7 @@
         }
       });
     });
+    setupWildfireTracking();
   </script>
 </body>
 </html>

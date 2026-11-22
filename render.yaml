@@ -9,3 +9,5 @@ services:
     envVars:
       - key: HOST
         value: 0.0.0.0
+      - key: FIRMS_MAP_KEY
+        sync: false

@@ -12,10 +12,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +42,7 @@ public class OrbitServer {
     private static final Map<String, CachedFlightFeed> FLIGHT_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, String> MAP_DATA_CACHE = new ConcurrentHashMap<>();
     private static volatile CachedWildfireFeed WILDFIRE_CACHE;
+    private static final String FIRMS_SOURCE_URL = "https://firms.modaps.eosdis.nasa.gov/map/";
     private static final Map<String, String> MAP_DATA_URLS = Map.of(
         "/api/map/countries", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
         "/api/map/cities", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places_simple.geojson"
@@ -46,6 +52,35 @@ public class OrbitServer {
     private record CachedFeed(Instant cachedAt, List<Article> articles) {}
     private record CachedFlightFeed(Instant cachedAt, String json) {}
     private record CachedWildfireFeed(Instant cachedAt, String json) {}
+    private record FireCell(int latitude, int longitude) {}
+
+    private static final class FireCluster {
+        private double latitudeTotal;
+        private double longitudeTotal;
+        private double frpTotal;
+        private double maxFrp;
+        private int detections;
+        private int highConfidenceDetections;
+        private Instant latestDetection;
+
+        private void add(double latitude, double longitude, double frp, boolean highConfidence, Instant detectedAt) {
+            latitudeTotal += latitude;
+            longitudeTotal += longitude;
+            frpTotal += frp;
+            maxFrp = Math.max(maxFrp, frp);
+            detections++;
+            if (highConfidence) highConfidenceDetections++;
+            if (latestDetection == null || detectedAt.isAfter(latestDetection)) latestDetection = detectedAt;
+        }
+
+        private double latitude() {
+            return latitudeTotal / detections;
+        }
+
+        private double longitude() {
+            return longitudeTotal / detections;
+        }
+    }
 
     public static void main(String[] args) throws IOException {
         String host = System.getenv().getOrDefault("HOST", "127.0.0.1");
@@ -173,6 +208,17 @@ public class OrbitServer {
             send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"Use GET.\"}");
             return;
         }
+        String mapKey = System.getenv("FIRMS_MAP_KEY");
+        if (mapKey == null || mapKey.isBlank()) {
+            send(exchange, 503, "application/json; charset=utf-8",
+                "{\"error\":\"Global wildfire data needs a free NASA FIRMS MAP_KEY. Register at https://firms.modaps.eosdis.nasa.gov/api/area/ and add it as FIRMS_MAP_KEY in the server environment.\"}");
+            return;
+        }
+        if (!mapKey.matches("[A-Za-z0-9_-]+")) {
+            send(exchange, 500, "application/json; charset=utf-8",
+                "{\"error\":\"FIRMS_MAP_KEY is invalid. Check the server environment variable.\"}");
+            return;
+        }
         Instant now = Instant.now();
         CachedWildfireFeed cached = WILDFIRE_CACHE;
         if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
@@ -181,9 +227,9 @@ public class OrbitServer {
         }
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(
-                "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=all&days=30&limit=1000"))
+                "https://firms.modaps.eosdis.nasa.gov/api/area/csv/" + mapKey + "/VIIRS_SNPP_NRT/world/3"))
             .timeout(Duration.ofSeconds(20))
-            .header("User-Agent", "BetterEarthWildfireMap/1.0")
+            .header("User-Agent", "BetterEarthWildfireMap/2.0")
             .GET()
             .build();
         HttpResponse<String> response;
@@ -191,27 +237,127 @@ public class OrbitServer {
             response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException error) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA EONET wildfire data could not be reached.\"}");
+                "{\"error\":\"NASA FIRMS wildfire detections could not be reached.\"}");
             return;
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The NASA EONET wildfire request was interrupted.\"}");
+                "{\"error\":\"The NASA FIRMS wildfire request was interrupted.\"}");
             return;
         }
         if (response.statusCode() != 200) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA EONET returned HTTP " + response.statusCode() + ".\"}");
+                "{\"error\":\"NASA FIRMS returned HTTP " + response.statusCode() + ". Check the FIRMS_MAP_KEY and service quota.\"}");
             return;
         }
-        String data = response.body();
-        if (!data.startsWith("{") || !data.contains("\"events\"")) {
+        List<String> lines = response.body().lines().toList();
+        if (lines.isEmpty()) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA EONET returned invalid wildfire data.\"}");
+                "{\"error\":\"NASA FIRMS returned an empty response instead of detection data.\"}");
             return;
         }
+        Map<String, Integer> columns = new HashMap<>();
+        List<String> headers = parseCsvRecord(lines.get(0));
+        for (int i = 0; i < headers.size(); i++) columns.put(headers.get(i).trim().toLowerCase(), i);
+        if (!columns.keySet().containsAll(List.of("latitude", "longitude", "acq_date", "acq_time", "confidence", "frp"))) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"NASA FIRMS returned an unexpected response. Check FIRMS_MAP_KEY and the service quota.\"}");
+            return;
+        }
+
+        Instant cutoff = now.minus(Duration.ofHours(48));
+        Map<FireCell, FireCluster> clusters = new HashMap<>();
+        for (int lineNumber = 1; lineNumber < lines.size(); lineNumber++) {
+            List<String> row = parseCsvRecord(lines.get(lineNumber));
+            if (row.size() < headers.size()) continue;
+            try {
+                double latitude = Double.parseDouble(row.get(columns.get("latitude")));
+                double longitude = Double.parseDouble(row.get(columns.get("longitude")));
+                double frp = Double.parseDouble(row.get(columns.get("frp")));
+                Instant detectedAt = parseFirmsTimestamp(
+                    row.get(columns.get("acq_date")), row.get(columns.get("acq_time")));
+                if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+                    !Double.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+                    !Double.isFinite(frp) || frp < 0 || detectedAt == null ||
+                    detectedAt.isBefore(cutoff) || detectedAt.isAfter(now)) continue;
+                String confidence = row.get(columns.get("confidence")).trim();
+                boolean highConfidence = confidence.equalsIgnoreCase("h");
+                if (!highConfidence) {
+                    try {
+                        highConfidence = Double.parseDouble(confidence) >= 80;
+                    } catch (NumberFormatException ignored) {
+                        // FIRMS confidence may be categorical (l, n, h) or numeric.
+                    }
+                }
+                FireCell cell = new FireCell((int) Math.floor(latitude * 10), (int) Math.floor(longitude * 10));
+                clusters.computeIfAbsent(cell, ignored -> new FireCluster())
+                    .add(latitude, longitude, frp, highConfidence, detectedAt);
+            } catch (NumberFormatException | DateTimeParseException ignored) {
+                // Skip malformed source rows; valid rows still form the global feed.
+            }
+        }
+
+        List<Map.Entry<FireCell, FireCluster>> topClusters = clusters.entrySet().stream()
+            .sorted(Map.Entry.<FireCell, FireCluster>comparingByValue(
+                Comparator.comparingDouble((FireCluster cluster) -> cluster.frpTotal).reversed()
+                    .thenComparing(Comparator.comparingInt((FireCluster cluster) -> cluster.detections).reversed())))
+            .limit(5)
+            .toList();
+        StringBuilder json = new StringBuilder("{\"provider\":\"NASA FIRMS VIIRS SNPP NRT\",\"windowHours\":48,\"events\":[");
+        for (int i = 0; i < topClusters.size(); i++) {
+            if (i > 0) json.append(',');
+            FireCluster cluster = topClusters.get(i).getValue();
+            double latitude = cluster.latitude();
+            double longitude = cluster.longitude();
+            json.append("{\"title\":").append(jsonString("High-activity fire detection cluster #" + (i + 1)))
+                .append(",\"latitude\":").append(latitude)
+                .append(",\"longitude\":").append(longitude)
+                .append(",\"detectionCount\":").append(cluster.detections)
+                .append(",\"totalFrp\":").append(cluster.frpTotal)
+                .append(",\"maxFrp\":").append(cluster.maxFrp)
+                .append(",\"highConfidenceDetections\":").append(cluster.highConfidenceDetections)
+                .append(",\"lastDetected\":").append(jsonString(cluster.latestDetection.toString()))
+                .append(",\"sourceUrl\":").append(jsonString(FIRMS_SOURCE_URL))
+                .append('}');
+        }
+        json.append("]}");
+        String data = json.toString();
         WILDFIRE_CACHE = new CachedWildfireFeed(Instant.now(), data);
         send(exchange, 200, "application/json; charset=utf-8", data);
+    }
+
+    private static Instant parseFirmsTimestamp(String date, String time) {
+        String digits = time.trim();
+        if (digits.isEmpty() || digits.length() > 4) return null;
+        int hhmm = Integer.parseInt(digits);
+        int hour = hhmm / 100;
+        int minute = hhmm % 100;
+        if (hour > 23 || minute > 59) return null;
+        return LocalDate.parse(date.trim()).atTime(LocalTime.of(hour, minute)).toInstant(ZoneOffset.UTC);
+    }
+
+    private static List<String> parseCsvRecord(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean quoted = false;
+        for (int i = 0; i < line.length(); i++) {
+            char character = line.charAt(i);
+            if (character == '"') {
+                if (quoted && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    field.append('"');
+                    i++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (character == ',' && !quoted) {
+                fields.add(field.toString());
+                field.setLength(0);
+            } else {
+                field.append(character);
+            }
+        }
+        fields.add(field.toString());
+        return fields;
     }
 
     private static void serveMapData(HttpExchange exchange, String path) throws Exception {
