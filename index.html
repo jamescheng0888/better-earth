@@ -399,14 +399,14 @@
             <div class="wildfire-panel-head">
               <div>
                 <h2 class="wildfire-panel-title" id="wildfire-panel-title"><span class="wildfire-panel-key" aria-hidden="true">●</span>Global fire activity</h2>
-                <p class="wildfire-panel-description" id="wildfire-description">Global fire activity across Earth, independent of the selected location.</p>
+                <p class="wildfire-panel-description" id="wildfire-description">Global fire reports from the past 48 hours, independent of the selected location.</p>
               </div>
               <span class="wildfire-status" id="wildfire-status" aria-live="polite">WAITING</span>
             </div>
             <div class="wildfire-list" id="wildfire-list" aria-live="polite">
               <div class="wildfire-empty">Loading global wildfire reports…</div>
             </div>
-            <p class="wildfire-source-note" id="wildfire-source-note">NASA FIRMS satellite detections are used when configured. Otherwise, this panel falls back to NASA EONET open incidents; the last report date is shown and may be older than 48 hours.</p>
+            <p class="wildfire-source-note" id="wildfire-source-note">NASA FIRMS satellite detections are used when configured; otherwise, Copernicus GWIS provides global near-real-time burnt-area reports.</p>
           </section>
         </div>
 
@@ -459,7 +459,7 @@
         <div class="earthquake-grid" id="earthquake-grid" aria-live="polite">
           <div class="earthquake-empty">Earthquake details will appear here after you search a location.</div>
         </div>
-        <p class="earthquake-source-note">USGS earthquakes reported in the past 48 hours within 50 miles of the selected location. Marker colors show magnitude, not local shaking intensity; actual shaking varies by distance and ground conditions.</p>
+        <p class="earthquake-source-note" id="earthquake-source-note">USGS is used for U.S. locations; EMSC SeismicPortal is used internationally. Results cover the past 48 hours within 50 miles.</p>
       </section>
 
       <section class="results-section" aria-live="polite">
@@ -477,7 +477,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Wildfires <span>NASA EONET / FIRMS</span> · Earthquakes <span>USGS</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -1318,6 +1318,7 @@
       document.querySelector("#longitude").value = location.lon;
       setupFlightTracking(location);
       setupEarthquakeTracking(location);
+      setupWildfireTracking(location);
     }
 
     function setupFlightTracking(location) {
@@ -1391,24 +1392,42 @@
     }
 
     async function requestEarthquakeFeed(location, signal) {
+      const sourceRegion = location.countryCode?.toUpperCase() === "US" ? "us" : "international";
       const params = new URLSearchParams({
         lat: String(location.lat),
-        lon: String(location.lon)
+        lon: String(location.lon),
+        region: sourceRegion
       });
       const response = await fetch(`/api/earthquakes?${params}`, { signal });
       if (response.status !== 404) return response;
 
       const startTime = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-      const usgsParams = new URLSearchParams({
-        format: "geojson",
-        latitude: String(location.lat),
-        longitude: String(location.lon),
-        maxradiuskm: String(50 * 1.609344),
-        starttime: startTime,
-        orderby: "magnitude",
-        limit: "500"
-      });
-      return fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?${usgsParams}`, { signal });
+      const endTime = new Date().toISOString();
+      const paramsDirect = sourceRegion === "us"
+        ? new URLSearchParams({
+            format: "geojson",
+            latitude: String(location.lat),
+            longitude: String(location.lon),
+            maxradiuskm: String(50 * 1.609344),
+            starttime: startTime,
+            endtime: endTime,
+            orderby: "magnitude",
+            limit: "500"
+          })
+        : new URLSearchParams({
+            format: "json",
+            lat: String(location.lat),
+            lon: String(location.lon),
+            maxradius: String((50 * 1.609344) / 111.195),
+            start: startTime,
+            end: endTime,
+            orderby: "magnitude",
+            limit: "500"
+          });
+      const sourceUrl = sourceRegion === "us"
+        ? "https://earthquake.usgs.gov/fdsnws/event/1/query"
+        : "https://www.seismicportal.eu/fdsnws/event/1/query";
+      return fetch(`${sourceUrl}?${paramsDirect}`, { signal });
     }
 
     async function fetchNearbyEarthquakes(location) {
@@ -1438,7 +1457,7 @@
                 !Array.isArray(coordinates) || coordinates.length < 3) return null;
             const [longitude, latitude, depthKm] = coordinates.map(Number);
             const magnitude = Number(properties.mag);
-            const time = Number(properties.time);
+            const time = typeof properties.time === "string" ? Date.parse(properties.time) : Number(properties.time);
             if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
                 !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
                 !Number.isFinite(magnitude) || !Number.isFinite(time) ||
@@ -1447,13 +1466,15 @@
             if (distanceKm > radiusKm) return null;
             return {
               id: String(feature.id || `${time}-${latitude}-${longitude}`),
-              title: String(properties.place || "Earthquake"),
-              url: properties.url,
+              title: String(properties.place || properties.flynn_region || "Earthquake"),
+              url: properties.url || (properties.unid
+                ? `https://www.seismicportal.eu/eventdetails.html?unid=${encodeURIComponent(properties.unid)}`
+                : ""),
               latitude,
               longitude,
               depthKm: Number.isFinite(depthKm) ? depthKm : null,
               magnitude,
-              magnitudeType: String(properties.magType || ""),
+              magnitudeType: String(properties.magType || properties.magtype || ""),
               mmi: properties.mmi != null && Number.isFinite(Number(properties.mmi)) ? Number(properties.mmi) : null,
               time,
               distanceKm
@@ -1466,6 +1487,8 @@
         document.querySelector("#earthquakes-status").classList.toggle("earthquakes-status-live", earthquakes.length > 0);
         document.querySelector("#earthquakes-description").textContent =
           `${earthquakes.length} earthquake${earthquakes.length === 1 ? "" : "s"} reported in the past 48 hours within 50 miles of ${location.locality || location.name || "this location"}.`;
+        document.querySelector("#earthquake-source-note").textContent =
+          `${data.provider === "EMSC" ? "EMSC SeismicPortal" : "USGS"} data for this location; events are limited to the past 48 hours and 50 miles. Marker colors show magnitude, not local shaking intensity.`;
       } catch (error) {
         if (requestId !== earthquakeRequest || error.name === "AbortError") return;
         clearEarthquakeMarkers();
@@ -1555,7 +1578,7 @@
       displayMapLabels();
     }
 
-    function setupWildfireTracking() {
+    function setupWildfireTracking(location = null) {
       if (wildfireRefreshTimer) clearInterval(wildfireRefreshTimer);
       wildfireRefreshTimer = null;
       if (activeWildfireController) activeWildfireController.abort();
@@ -1569,28 +1592,32 @@
       document.querySelector("#wildfire-status").classList.remove("wildfire-status-live");
       document.querySelector("#wildfire-list").innerHTML =
         '<div class="wildfire-empty">Loading global wildfire reports…</div>';
-      fetchNearbyWildfires();
-      wildfireRefreshTimer = window.setInterval(fetchNearbyWildfires, 900000);
+      const region = location?.countryCode?.toUpperCase() === "US" ? "us" : "international";
+      fetchNearbyWildfires(region);
+      wildfireRefreshTimer = window.setInterval(() => fetchNearbyWildfires(region), 900000);
     }
 
-    async function fetchNearbyWildfires() {
+    async function fetchNearbyWildfires(region = "international") {
       const requestId = ++wildfireRequest;
       if (activeWildfireController) activeWildfireController.abort();
       const controller = new AbortController();
       activeWildfireController = controller;
       document.querySelector("#wildfire-status").textContent = "UPDATING";
       try {
-        const response = await fetch("/api/wildfires", { signal: controller.signal });
+        const response = await fetch(`/api/wildfires?region=${encodeURIComponent(region)}`, { signal: controller.signal });
         if (!response.ok) {
           const error = await response.json().catch(() => ({}));
           throw new Error(error.error || `Wildfire feed returned ${response.status}`);
         }
         const data = await response.json();
         if (requestId !== wildfireRequest) return;
-        if (!Array.isArray(data.events)) throw new Error("The wildfire service returned invalid data.");
+        if (typeof data.provider !== "string") throw new Error("The wildfire service returned invalid data.");
         const isFirms = data.provider === "NASA FIRMS VIIRS SNPP NRT";
-        const fires = isFirms
-          ? data.events
+        const isCopernicus = data.provider === "Copernicus GWIS NRT Burnt Areas";
+        let fires;
+        if (isFirms) {
+          if (!Array.isArray(data.events)) throw new Error("NASA FIRMS returned invalid wildfire data.");
+          fires = data.events
             .filter((event) => typeof event.title === "string" &&
               Number.isFinite(event.latitude) && event.latitude >= -90 && event.latitude <= 90 &&
               Number.isFinite(event.longitude) && event.longitude >= -180 && event.longitude <= 180 &&
@@ -1598,21 +1625,23 @@
               Number.isFinite(event.totalFrp) && event.totalFrp >= 0 &&
               Number.isFinite(Date.parse(event.lastDetected)) &&
               Date.parse(event.lastDetected) >= Date.now() - 48 * 60 * 60 * 1000 &&
-              Date.parse(event.lastDetected) <= Date.now())
-          : data.provider === "NASA EONET active incidents"
-            ? normalizeEonetWildfires(data.events)
-            : (() => { throw new Error("The wildfire service returned an unknown data source."); })();
+              Date.parse(event.lastDetected) <= Date.now());
+        } else if (isCopernicus) {
+          fires = normalizeCopernicusWildfires(data.features);
+        } else {
+          throw new Error("The wildfire service returned an unknown data source.");
+        }
         renderNearbyWildfires(fires);
         document.querySelector("#wildfire-status").textContent =
-          `${fires.length} ${isFirms ? "GLOBAL CLUSTERS" : "ACTIVE INCIDENTS"}`;
+          `${fires.length} ${isFirms ? "GLOBAL CLUSTERS" : "GLOBAL REPORTS"}`;
         document.querySelector("#wildfire-status").classList.toggle("wildfire-status-live", fires.length > 0);
         document.querySelector("#wildfire-description").textContent =
           isFirms
             ? `Top ${fires.length} high-activity satellite detection clusters worldwide from the past 48 hours (UTC).`
-            : `Largest ${fires.length} open wildfire incidents reported to NASA EONET worldwide. Last report dates are shown.`;
+            : `Top ${fires.length} reported burnt-area observations worldwide from the past 48 hours (UTC).`;
         document.querySelector("#wildfire-source-note").textContent = isFirms
           ? "NASA FIRMS VIIRS satellite heat detections from the past 48 hours (UTC). Clusters rank by summed fire radiative power, not burned area; detections are estimates and may include other heat sources."
-          : "NASA EONET open wildfire incidents, ranked by reported burned area. Incident feeds can lag; each last-report date is shown and may be older than 48 hours. Prescribed burns are excluded.";
+          : "Copernicus GWIS near-real-time burnt-area reports, filtered to 48 hours and ranked by estimated area (ha). Map points are report locations, not fire perimeters; coverage and reporting times can vary.";
       } catch (error) {
         if (requestId !== wildfireRequest || error.name === "AbortError") return;
         clearWildfireMarkers();
@@ -1626,50 +1655,39 @@
       }
     }
 
-    function normalizeEonetWildfires(events) {
-      return events
-        .filter((event) => typeof event.title === "string" &&
-          !/\bprescribed fire\b|\bRX\b/i.test(event.title))
-        .map((event) => {
-          const observations = Array.isArray(event.geometry) ? event.geometry : [];
-          const observation = observations
-            .filter((item) => item && typeof item.date === "string" && Number.isFinite(Date.parse(item.date)))
-            .reduce((latest, item) => !latest || Date.parse(item.date) > Date.parse(latest.date) ? item : latest, null);
-          if (!observation) return null;
-          const coordinates = wildfireCoordinates(observation);
-          const sizeValue = Number(observation.magnitudeValue);
-          if (!coordinates || !Number.isFinite(sizeValue) || sizeValue <= 0 ||
-              !/acre/i.test(observation.magnitudeUnit || "")) return null;
-          const source = Array.isArray(event.sources) ? event.sources[0] : null;
+    function normalizeCopernicusWildfires(features) {
+      if (!Array.isArray(features)) throw new Error("Copernicus GWIS returned invalid wildfire data.");
+      const now = Date.now();
+      const cutoff = now - 48 * 60 * 60 * 1000;
+      return features
+        .map((feature) => {
+          const properties = feature?.properties;
+          const coordinates = feature?.geometry?.coordinates;
+          const latitude = Number(coordinates?.[1]);
+          const longitude = Number(coordinates?.[0]);
+          const sizeValue = Number(properties?.area);
+          const dateText = typeof properties?.finaldate === "string" ? properties.finaldate : "";
+          const isoDate = dateText.includes("T")
+            ? dateText
+            : dateText.replace(" ", "T") + "Z";
+          const lastDetected = Date.parse(isoDate);
+          if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+              !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+              !Number.isFinite(sizeValue) || sizeValue <= 0 ||
+              !Number.isFinite(lastDetected) || lastDetected < cutoff || lastDetected > now) return null;
           return {
-            title: event.title,
-            ...coordinates,
+            title: `Near-real-time wildfire report ${properties.fire_id || properties.id || ""}`.trim(),
+            latitude,
+            longitude,
             sizeValue,
-            sizeUnit: observation.magnitudeUnit,
-            lastDetected: observation.date,
-            sourceUrl: source?.url || event.link
+            sizeUnit: "ha",
+            lastDetected: new Date(lastDetected).toISOString(),
+            sourceUrl: "https://gwis.jrc.ec.europa.eu/"
           };
         })
         .filter(Boolean)
         .sort((a, b) => b.sizeValue - a.sizeValue)
         .slice(0, 5);
-    }
-
-    function wildfireCoordinates(geometry) {
-      if (!geometry || !Array.isArray(geometry.coordinates)) return null;
-      if (geometry.type === "Point") {
-        const [longitude, latitude] = geometry.coordinates;
-        return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
-          ? { latitude: Number(latitude), longitude: Number(longitude) }
-          : null;
-      }
-      if (geometry.type !== "Polygon" || !Array.isArray(geometry.coordinates[0])) return null;
-      const ring = geometry.coordinates[0];
-      const points = ring.length > 1 ? ring.slice(0, -1) : ring;
-      if (!points.length) return null;
-      const longitude = points.reduce((total, point) => total + Number(point[0]), 0) / points.length;
-      const latitude = points.reduce((total, point) => total + Number(point[1]), 0) / points.length;
-      return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
     }
 
     function renderNearbyWildfires(fires) {
@@ -1697,15 +1715,15 @@
       document.querySelector("#wildfire-map-key").hidden = fires.length === 0;
       const list = document.querySelector("#wildfire-list");
       if (!fires.length) {
-        list.innerHTML = '<div class="wildfire-empty">No wildfire reports with usable location and size data were returned by the available sources.</div>';
+        list.innerHTML = '<div class="wildfire-empty">No wildfire reports with usable location and source dates from the past 48 hours were returned.</div>';
         displayMapLabels();
         return;
       }
       list.innerHTML = fires.map((fire, index) => {
         const sourceUrl = safeExternalUrl(fire.sourceUrl);
         const sourceLink = sourceUrl
-          ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${fire.detectionCount ? "NASA FIRMS map" : "Incident source"} ↗</a>`
-          : fire.detectionCount ? "NASA FIRMS" : "NASA EONET";
+          ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${fire.detectionCount ? "NASA FIRMS map" : "Copernicus GWIS source"} ↗</a>`
+          : fire.detectionCount ? "NASA FIRMS" : "Copernicus GWIS";
         const reportedAt = new Date(fire.lastDetected);
         const reportDate = new Intl.DateTimeFormat(undefined, {
           dateStyle: "medium", timeStyle: "short", timeZone: "UTC"
@@ -1719,7 +1737,9 @@
               ? `<span>${fire.detectionCount.toLocaleString()} detections</span>
                  <span>Summed FRP ${fire.totalFrp.toLocaleString(undefined, { maximumFractionDigits: 1 })} MW</span>
                  <span>${fire.highConfidenceDetections.toLocaleString()} high-confidence</span>`
-              : `<span>Reported area ${fire.sizeValue.toLocaleString()} ${escapeHtml(fire.sizeUnit)}</span>`}
+              : fire.sizeValue != null
+                ? `<span>Reported area ${fire.sizeValue.toLocaleString()} ${escapeHtml(fire.sizeUnit)}</span>`
+                : '<span>Burned area not reported</span>'}
             <span>${latitude}, ${longitude}</span>
             <span>${fire.detectionCount ? "Last detected" : "Last reported"} ${escapeHtml(reportDate)} UTC</span>
             <span>${sourceLink}</span>

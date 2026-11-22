@@ -41,7 +41,7 @@ public class OrbitServer {
     private static final Map<String, CachedFeed> CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedFlightFeed> FLIGHT_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, String> MAP_DATA_CACHE = new ConcurrentHashMap<>();
-    private static volatile CachedWildfireFeed WILDFIRE_CACHE;
+    private static final Map<String, CachedWildfireFeed> WILDFIRE_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedEarthquakeFeed> EARTHQUAKE_CACHE = new ConcurrentHashMap<>();
     private static final String FIRMS_SOURCE_URL = "https://firms.modaps.eosdis.nasa.gov/map/";
     private static final Map<String, String> MAP_DATA_URLS = Map.of(
@@ -231,7 +231,9 @@ public class OrbitServer {
                 "{\"error\":\"Coordinates must be within ±90° latitude and ±180° longitude.\"}");
             return;
         }
-        String cacheKey = String.format(java.util.Locale.ROOT, "%.4f,%.4f", latitude, longitude);
+        boolean useEmsc = "international".equalsIgnoreCase(queryParameter(rawQuery, "region"));
+        String provider = useEmsc ? "EMSC" : "USGS";
+        String cacheKey = provider + ":" + String.format(java.util.Locale.ROOT, "%.4f,%.4f", latitude, longitude);
         Instant now = Instant.now();
         CachedEarthquakeFeed cached = EARTHQUAKE_CACHE.get(cacheKey);
         if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 5) {
@@ -241,12 +243,16 @@ public class OrbitServer {
 
         String startTime = URLEncoder.encode(now.minus(Duration.ofHours(48)).toString(), StandardCharsets.UTF_8);
         String endTime = URLEncoder.encode(now.toString(), StandardCharsets.UTF_8);
-        String url = String.format(java.util.Locale.ROOT,
-            "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=%.6f&longitude=%.6f&maxradiuskm=80.4672&starttime=%s&endtime=%s&orderby=magnitude&limit=500",
-            latitude, longitude, startTime, endTime);
+        String url = useEmsc
+            ? String.format(java.util.Locale.ROOT,
+                "https://www.seismicportal.eu/fdsnws/event/1/query?format=json&lat=%.6f&lon=%.6f&maxradius=0.724&start=%s&end=%s&orderby=magnitude&limit=500",
+                latitude, longitude, startTime, endTime)
+            : String.format(java.util.Locale.ROOT,
+                "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=%.6f&longitude=%.6f&maxradiuskm=80.4672&starttime=%s&endtime=%s&orderby=magnitude&limit=500",
+                latitude, longitude, startTime, endTime);
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
             .timeout(Duration.ofSeconds(20))
-            .header("User-Agent", "BetterEarthEarthquakeMap/1.0")
+            .header("User-Agent", "BetterEarthEarthquakeMap/2.0")
             .GET()
             .build();
         HttpResponse<String> response;
@@ -254,23 +260,23 @@ public class OrbitServer {
             response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException error) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The USGS earthquake feed could not be reached.\"}");
+                "{\"error\":\"The " + provider + " earthquake feed could not be reached.\"}");
             return;
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The USGS earthquake request was interrupted.\"}");
+                "{\"error\":\"The " + provider + " earthquake request was interrupted.\"}");
             return;
         }
         if (response.statusCode() != 200) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"USGS returned HTTP " + response.statusCode() + " for the earthquake search.\"}");
+                "{\"error\":\"" + provider + " returned HTTP " + response.statusCode() + " for the earthquake search.\"}");
             return;
         }
         String data = response.body();
         if (!data.startsWith("{") || !data.contains("\"features\"")) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"USGS returned invalid earthquake data.\"}");
+                "{\"error\":\"" + provider + " returned invalid earthquake data.\"}");
             return;
         }
         if (EARTHQUAKE_CACHE.size() >= 500) {
@@ -278,8 +284,9 @@ public class OrbitServer {
                 .min(Map.Entry.comparingByValue(java.util.Comparator.comparing(CachedEarthquakeFeed::cachedAt)))
                 .ifPresent(oldest -> EARTHQUAKE_CACHE.remove(oldest.getKey(), oldest.getValue()));
         }
-        EARTHQUAKE_CACHE.put(cacheKey, new CachedEarthquakeFeed(Instant.now(), data));
-        send(exchange, 200, "application/geo+json; charset=utf-8", data);
+        String responseData = "{\"provider\":" + jsonString(provider) + "," + data.substring(1);
+        EARTHQUAKE_CACHE.put(cacheKey, new CachedEarthquakeFeed(Instant.now(), responseData));
+        send(exchange, 200, "application/geo+json; charset=utf-8", responseData);
     }
 
     private static void serveWildfires(HttpExchange exchange) throws IOException {
@@ -289,11 +296,11 @@ public class OrbitServer {
         }
         String mapKey = System.getenv("FIRMS_MAP_KEY");
         if (mapKey == null || mapKey.isBlank() || !mapKey.matches("[A-Za-z0-9_-]+")) {
-            serveEonetWildfires(exchange);
+            serveWildfireFallback(exchange);
             return;
         }
         Instant now = Instant.now();
-        CachedWildfireFeed cached = WILDFIRE_CACHE;
+        CachedWildfireFeed cached = WILDFIRE_CACHE.get("FIRMS");
         if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
             send(exchange, 200, "application/json; charset=utf-8", cached.json());
             return;
@@ -309,27 +316,27 @@ public class OrbitServer {
         try {
             response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException error) {
-            serveEonetWildfires(exchange);
+            serveWildfireFallback(exchange);
             return;
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            serveEonetWildfires(exchange);
+            serveWildfireFallback(exchange);
             return;
         }
         if (response.statusCode() != 200) {
-            serveEonetWildfires(exchange);
+            serveWildfireFallback(exchange);
             return;
         }
         List<String> lines = response.body().lines().toList();
         if (lines.isEmpty()) {
-            serveEonetWildfires(exchange);
+            serveWildfireFallback(exchange);
             return;
         }
         Map<String, Integer> columns = new HashMap<>();
         List<String> headers = parseCsvRecord(lines.get(0));
         for (int i = 0; i < headers.size(); i++) columns.put(headers.get(i).trim().toLowerCase(), i);
         if (!columns.keySet().containsAll(List.of("latitude", "longitude", "acq_date", "acq_time", "confidence", "frp"))) {
-            serveEonetWildfires(exchange);
+            serveWildfireFallback(exchange);
             return;
         }
 
@@ -390,23 +397,22 @@ public class OrbitServer {
         }
         json.append("]}");
         String data = json.toString();
-        WILDFIRE_CACHE = new CachedWildfireFeed(Instant.now(), data);
+        WILDFIRE_CACHE.put("FIRMS", new CachedWildfireFeed(Instant.now(), data));
         send(exchange, 200, "application/json; charset=utf-8", data);
     }
 
-    private static void serveEonetWildfires(HttpExchange exchange) throws IOException {
+    private static void serveWildfireFallback(HttpExchange exchange) throws IOException {
         Instant now = Instant.now();
-        CachedWildfireFeed cached = WILDFIRE_CACHE;
-        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15 &&
-            cached.json().contains("\"provider\":\"NASA EONET active incidents\"")) {
+        CachedWildfireFeed cached = WILDFIRE_CACHE.get("COPERNICUS_GWIS");
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
             send(exchange, 200, "application/json; charset=utf-8", cached.json());
             return;
         }
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(
-                "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=1000"))
-            .timeout(Duration.ofSeconds(20))
-            .header("User-Agent", "BetterEarthWildfireMap/2.0")
+                "https://maps.effis.emergency.copernicus.eu/gwis?service=WFS&version=1.1.0&request=GetFeature&typeName=ms%3Anrt.ba.point.today&maxFeatures=10000&outputFormat=application%2Fjson%3B%20subtype%3Dgeojson"))
+            .timeout(Duration.ofSeconds(45))
+            .header("User-Agent", "BetterEarthWildfireMap/3.0")
             .GET()
             .build();
         HttpResponse<String> response;
@@ -414,22 +420,22 @@ public class OrbitServer {
             response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException error) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA FIRMS is unavailable and NASA EONET active wildfire data could not be reached.\"}");
+                "{\"error\":\"Copernicus GWIS wildfire data could not be reached.\"}");
             return;
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA FIRMS is unavailable and the NASA EONET wildfire request was interrupted.\"}");
+                "{\"error\":\"The Copernicus GWIS wildfire request was interrupted.\"}");
             return;
         }
         String sourceData = response.body();
-        if (response.statusCode() != 200 || !sourceData.startsWith("{") || !sourceData.contains("\"events\"")) {
+        if (response.statusCode() != 200 || !sourceData.startsWith("{") || !sourceData.contains("\"features\"")) {
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA FIRMS is unavailable and NASA EONET returned invalid wildfire data.\"}");
+                "{\"error\":\"Copernicus GWIS returned invalid wildfire data.\"}");
             return;
         }
-        String data = "{\"provider\":\"NASA EONET active incidents\"," + sourceData.substring(1);
-        WILDFIRE_CACHE = new CachedWildfireFeed(Instant.now(), data);
+        String data = "{\"provider\":\"Copernicus GWIS NRT Burnt Areas\"," + sourceData.substring(1);
+        WILDFIRE_CACHE.put("COPERNICUS_GWIS", new CachedWildfireFeed(Instant.now(), data));
         send(exchange, 200, "application/json; charset=utf-8", data);
     }
 
