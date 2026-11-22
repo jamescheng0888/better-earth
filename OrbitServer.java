@@ -209,14 +209,8 @@ public class OrbitServer {
             return;
         }
         String mapKey = System.getenv("FIRMS_MAP_KEY");
-        if (mapKey == null || mapKey.isBlank()) {
-            send(exchange, 503, "application/json; charset=utf-8",
-                "{\"error\":\"Global wildfire data needs a free NASA FIRMS MAP_KEY. Register at https://firms.modaps.eosdis.nasa.gov/api/area/ and add it as FIRMS_MAP_KEY in the server environment.\"}");
-            return;
-        }
-        if (!mapKey.matches("[A-Za-z0-9_-]+")) {
-            send(exchange, 500, "application/json; charset=utf-8",
-                "{\"error\":\"FIRMS_MAP_KEY is invalid. Check the server environment variable.\"}");
+        if (mapKey == null || mapKey.isBlank() || !mapKey.matches("[A-Za-z0-9_-]+")) {
+            serveEonetWildfires(exchange);
             return;
         }
         Instant now = Instant.now();
@@ -236,32 +230,27 @@ public class OrbitServer {
         try {
             response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException error) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA FIRMS wildfire detections could not be reached.\"}");
+            serveEonetWildfires(exchange);
             return;
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The NASA FIRMS wildfire request was interrupted.\"}");
+            serveEonetWildfires(exchange);
             return;
         }
         if (response.statusCode() != 200) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA FIRMS returned HTTP " + response.statusCode() + ". Check the FIRMS_MAP_KEY and service quota.\"}");
+            serveEonetWildfires(exchange);
             return;
         }
         List<String> lines = response.body().lines().toList();
         if (lines.isEmpty()) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA FIRMS returned an empty response instead of detection data.\"}");
+            serveEonetWildfires(exchange);
             return;
         }
         Map<String, Integer> columns = new HashMap<>();
         List<String> headers = parseCsvRecord(lines.get(0));
         for (int i = 0; i < headers.size(); i++) columns.put(headers.get(i).trim().toLowerCase(), i);
         if (!columns.keySet().containsAll(List.of("latitude", "longitude", "acq_date", "acq_time", "confidence", "frp"))) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"NASA FIRMS returned an unexpected response. Check FIRMS_MAP_KEY and the service quota.\"}");
+            serveEonetWildfires(exchange);
             return;
         }
 
@@ -322,6 +311,45 @@ public class OrbitServer {
         }
         json.append("]}");
         String data = json.toString();
+        WILDFIRE_CACHE = new CachedWildfireFeed(Instant.now(), data);
+        send(exchange, 200, "application/json; charset=utf-8", data);
+    }
+
+    private static void serveEonetWildfires(HttpExchange exchange) throws IOException {
+        Instant now = Instant.now();
+        CachedWildfireFeed cached = WILDFIRE_CACHE;
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15 &&
+            cached.json().contains("\"provider\":\"NASA EONET active incidents\"")) {
+            send(exchange, 200, "application/json; charset=utf-8", cached.json());
+            return;
+        }
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(
+                "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=1000"))
+            .timeout(Duration.ofSeconds(20))
+            .header("User-Agent", "BetterEarthWildfireMap/2.0")
+            .GET()
+            .build();
+        HttpResponse<String> response;
+        try {
+            response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (IOException error) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"NASA FIRMS is unavailable and NASA EONET active wildfire data could not be reached.\"}");
+            return;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"NASA FIRMS is unavailable and the NASA EONET wildfire request was interrupted.\"}");
+            return;
+        }
+        String sourceData = response.body();
+        if (response.statusCode() != 200 || !sourceData.startsWith("{") || !sourceData.contains("\"events\"")) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"NASA FIRMS is unavailable and NASA EONET returned invalid wildfire data.\"}");
+            return;
+        }
+        String data = "{\"provider\":\"NASA EONET active incidents\"," + sourceData.substring(1);
         WILDFIRE_CACHE = new CachedWildfireFeed(Instant.now(), data);
         send(exchange, 200, "application/json; charset=utf-8", data);
     }
