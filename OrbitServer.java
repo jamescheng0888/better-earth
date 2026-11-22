@@ -42,6 +42,7 @@ public class OrbitServer {
     private static final Map<String, CachedFlightFeed> FLIGHT_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, String> MAP_DATA_CACHE = new ConcurrentHashMap<>();
     private static volatile CachedWildfireFeed WILDFIRE_CACHE;
+    private static final Map<String, CachedEarthquakeFeed> EARTHQUAKE_CACHE = new ConcurrentHashMap<>();
     private static final String FIRMS_SOURCE_URL = "https://firms.modaps.eosdis.nasa.gov/map/";
     private static final Map<String, String> MAP_DATA_URLS = Map.of(
         "/api/map/countries", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
@@ -52,6 +53,7 @@ public class OrbitServer {
     private record CachedFeed(Instant cachedAt, List<Article> articles) {}
     private record CachedFlightFeed(Instant cachedAt, String json) {}
     private record CachedWildfireFeed(Instant cachedAt, String json) {}
+    private record CachedEarthquakeFeed(Instant cachedAt, String json) {}
     private record FireCell(int latitude, int longitude) {}
 
     private static final class FireCluster {
@@ -229,11 +231,19 @@ public class OrbitServer {
                 "{\"error\":\"Coordinates must be within ±90° latitude and ±180° longitude.\"}");
             return;
         }
+        String cacheKey = String.format(java.util.Locale.ROOT, "%.4f,%.4f", latitude, longitude);
+        Instant now = Instant.now();
+        CachedEarthquakeFeed cached = EARTHQUAKE_CACHE.get(cacheKey);
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 5) {
+            send(exchange, 200, "application/geo+json; charset=utf-8", cached.json());
+            return;
+        }
 
-        String startTime = URLEncoder.encode(Instant.now().minus(Duration.ofHours(48)).toString(), StandardCharsets.UTF_8);
+        String startTime = URLEncoder.encode(now.minus(Duration.ofHours(48)).toString(), StandardCharsets.UTF_8);
+        String endTime = URLEncoder.encode(now.toString(), StandardCharsets.UTF_8);
         String url = String.format(java.util.Locale.ROOT,
-            "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=%.6f&longitude=%.6f&maxradiuskm=80.4672&starttime=%s&orderby=magnitude&limit=500",
-            latitude, longitude, startTime);
+            "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=%.6f&longitude=%.6f&maxradiuskm=80.4672&starttime=%s&endtime=%s&orderby=magnitude&limit=500",
+            latitude, longitude, startTime, endTime);
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
             .timeout(Duration.ofSeconds(20))
             .header("User-Agent", "BetterEarthEarthquakeMap/1.0")
@@ -263,6 +273,12 @@ public class OrbitServer {
                 "{\"error\":\"USGS returned invalid earthquake data.\"}");
             return;
         }
+        if (EARTHQUAKE_CACHE.size() >= 500) {
+            EARTHQUAKE_CACHE.entrySet().stream()
+                .min(Map.Entry.comparingByValue(java.util.Comparator.comparing(CachedEarthquakeFeed::cachedAt)))
+                .ifPresent(oldest -> EARTHQUAKE_CACHE.remove(oldest.getKey(), oldest.getValue()));
+        }
+        EARTHQUAKE_CACHE.put(cacheKey, new CachedEarthquakeFeed(Instant.now(), data));
         send(exchange, 200, "application/geo+json; charset=utf-8", data);
     }
 

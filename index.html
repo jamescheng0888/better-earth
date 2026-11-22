@@ -444,7 +444,7 @@
       <section class="earthquakes-section" aria-labelledby="earthquakes-title">
         <div class="earthquakes-head">
           <div>
-            <h2 class="earthquakes-title" id="earthquakes-title">Earthquakes nearby</h2>
+            <h2 class="earthquakes-title" id="earthquakes-title">Earthquakes in this region</h2>
             <p class="earthquakes-description" id="earthquakes-description">Search a location to see earthquakes within 50 miles from the past 48 hours.</p>
           </div>
           <span class="earthquakes-status" id="earthquakes-status" aria-live="polite">WAITING FOR LOCATION</span>
@@ -459,7 +459,7 @@
         <div class="earthquake-grid" id="earthquake-grid" aria-live="polite">
           <div class="earthquake-empty">Earthquake details will appear here after you search a location.</div>
         </div>
-        <p class="earthquake-source-note">USGS earthquakes reported in the past 48 hours within 50 miles. Marker colors show magnitude, not local shaking intensity; actual shaking varies by distance and ground conditions.</p>
+        <p class="earthquake-source-note">USGS earthquakes reported in the past 48 hours within 50 miles of the selected location. Marker colors show magnitude, not local shaking intensity; actual shaking varies by distance and ground conditions.</p>
       </section>
 
       <section class="results-section" aria-live="polite">
@@ -1483,7 +1483,12 @@
       selectedEarthquakes = earthquakes;
       const markerPositions = [];
       const markerColors = [];
-      selectedEarthquakeLabels = earthquakes.map((earthquake) => {
+      for (const earthquake of earthquakes) {
+        markerPositions.push(...locationVector(earthquake.latitude, earthquake.longitude).multiplyScalar(1.022).toArray());
+        const rgb = new THREE.Color(earthquakeColor(earthquake.magnitude));
+        markerColors.push(rgb.r, rgb.g, rgb.b);
+      }
+      selectedEarthquakeLabels = earthquakes.slice(0, 25).map((earthquake) => {
         const color = earthquakeColor(earthquake.magnitude);
         const label = createMapLabel(
           `M${earthquake.magnitude.toFixed(1)}`,
@@ -1495,11 +1500,7 @@
         label.latitude = earthquake.latitude;
         label.longitude = earthquake.longitude;
         label.element.style.setProperty("--quake-color", color);
-        label.element.title =
-          `${earthquake.title} · Magnitude ${earthquake.magnitude.toFixed(1)} · ${(earthquake.distanceKm / 1.609344).toFixed(1)} miles away`;
-        markerPositions.push(...locationVector(earthquake.latitude, earthquake.longitude).multiplyScalar(1.022).toArray());
-        const rgb = new THREE.Color(color);
-        markerColors.push(rgb.r, rgb.g, rgb.b);
+        label.element.title = `${earthquake.title} · Magnitude ${earthquake.magnitude.toFixed(1)} · ${(earthquake.distanceKm / 1.609344).toFixed(1)} miles away`;
         return label;
       });
       if (markerPositions.length) {
@@ -1516,7 +1517,7 @@
         displayMapLabels();
         return;
       }
-      grid.innerHTML = earthquakes.map((earthquake) => {
+      grid.innerHTML = earthquakes.slice(0, 50).map((earthquake) => {
         const color = earthquakeColor(earthquake.magnitude);
         const url = safeExternalUrl(earthquake.url);
         const place = url
