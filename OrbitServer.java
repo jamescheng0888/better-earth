@@ -65,6 +65,7 @@ public class OrbitServer {
     private record CachedEarthquakeFeed(Instant cachedAt, String json) {}
     private record CachedConditionsFeed(Instant cachedAt, String json) {}
     private record CachedStormFeed(Instant cachedAt, String json) {}
+    private record FlightProvider(String name, String baseUrl) {}
     private record TornadoReport(String id, String time, String scale, String location, String county,
         String state, double latitude, double longitude, String comments) {}
     private record FireCell(int latitude, int longitude) {}
@@ -376,7 +377,7 @@ public class OrbitServer {
 
         Instant now = Instant.now();
         FLIGHT_CACHE.entrySet().removeIf(entry ->
-            Duration.between(entry.getValue().cachedAt(), now).toSeconds() >= 15);
+            Duration.between(entry.getValue().cachedAt(), now).toSeconds() >= 60);
         String cacheKey = String.format(java.util.Locale.ROOT, "%.3f,%.3f", latitude, longitude);
         CachedFlightFeed cached = FLIGHT_CACHE.get(cacheKey);
         if (cached != null) {
@@ -384,38 +385,80 @@ public class OrbitServer {
             return;
         }
 
-        String path = String.format(java.util.Locale.ROOT,
-            "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/44", latitude, longitude);
-        HttpRequest request = HttpRequest.newBuilder(URI.create(path))
-            .timeout(Duration.ofSeconds(15))
-            .header("User-Agent", "OrbitLocationGlobe/1.0")
-            .GET()
-            .build();
-        HttpResponse<String> response;
-        try {
-            response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        } catch (IOException error) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The live aircraft feed could not be reached.\"}");
-            return;
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The live aircraft request was interrupted.\"}");
-            return;
+        List<FlightProvider> providers = List.of(
+            new FlightProvider("ADSB.lol", "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/44"),
+            new FlightProvider("ADSB.fi", "https://opendata.adsb.fi/api/v2/lat/%.5f/lon/%.5f/dist/44")
+        );
+        String data = null;
+        String bestProvider = null;
+        int lastStatus = 502;
+        for (FlightProvider provider : providers) {
+            String path = String.format(java.util.Locale.ROOT, provider.baseUrl(), latitude, longitude);
+            HttpRequest request = HttpRequest.newBuilder(URI.create(path))
+                .timeout(Duration.ofSeconds(15))
+                .header("User-Agent", "BetterEarth/1.0 (global live aircraft map)")
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+            HttpResponse<String> response;
+            try {
+                response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            } catch (IOException error) {
+                System.err.println(provider.name() + " aircraft feed request failed: " + error.getMessage());
+                continue;
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                send(exchange, 502, "application/json; charset=utf-8",
+                    "{\"error\":\"The live aircraft request was interrupted.\"}");
+                return;
+            }
+            if (response.statusCode() != 200) {
+                lastStatus = response.statusCode();
+                System.err.println(provider.name() + " aircraft feed returned HTTP " + lastStatus + ".");
+                continue;
+            }
+            String providerData = response.body();
+            if (provider.name().equals("ADSB.fi")) {
+                providerData = providerData.replaceFirst("\"aircraft\"\\s*:", "\"ac\":");
+                java.util.regex.Matcher nowMatcher =
+                    java.util.regex.Pattern.compile("\"now\"\\s*:\\s*(\\d+)").matcher(providerData);
+                if (nowMatcher.find()) {
+                    try {
+                        long timestamp = Long.parseLong(nowMatcher.group(1));
+                        if (timestamp < 100_000_000_000L) {
+                            providerData = providerData.substring(0, nowMatcher.start(1)) +
+                                (timestamp * 1000) + providerData.substring(nowMatcher.end(1));
+                        }
+                    } catch (NumberFormatException ignored) {
+                        System.err.println("ADSB.fi returned an invalid timestamp.");
+                        continue;
+                    }
+                }
+            }
+            if (!providerData.startsWith("{") || !providerData.contains("\"ac\"")) {
+                System.err.println(provider.name() + " aircraft feed returned invalid data.");
+                continue;
+            }
+            if (data == null) {
+                data = providerData;
+                bestProvider = provider.name();
+            }
+            if (!providerData.matches("(?s).*\"ac\"\\s*:\\s*\\[\\s*\\].*")) {
+                data = providerData;
+                bestProvider = provider.name();
+                break;
+            }
         }
-        if (response.statusCode() != 200) {
-            int status = response.statusCode() == 429 ? 429 : 502;
+        if (data == null) {
+            int status = lastStatus == 429 ? 429 : 502;
+            String message = status == 429
+                ? "All live aircraft feeds are rate-limited. Please wait briefly and try again."
+                : "All live aircraft feeds are temporarily unavailable.";
             send(exchange, status, "application/json; charset=utf-8",
-                "{\"error\":\"The live aircraft feed returned HTTP " + response.statusCode() + ".\"}");
+                "{\"error\":" + jsonString(message) + "}");
             return;
         }
-        String data = response.body();
-        if (!data.startsWith("{") || !data.contains("\"ac\"")) {
-            send(exchange, 502, "application/json; charset=utf-8", "{\"error\":\"The live aircraft feed returned invalid data.\"}");
-            return;
-        }
-        data = "{\"provider\":\"ADSB.lol\"," + data.substring(1);
+        data = "{\"provider\":" + jsonString(bestProvider) + "," + data.substring(1);
         if (FLIGHT_CACHE.size() >= 500) {
             FLIGHT_CACHE.entrySet().stream()
                 .min(Map.Entry.comparingByValue(java.util.Comparator.comparing(CachedFlightFeed::cachedAt)))

@@ -503,7 +503,7 @@
         <div class="flight-grid" id="flight-grid" aria-live="polite">
           <div class="flight-empty">Live aircraft will appear here after you search a location.</div>
         </div>
-        <p class="storm-source-note">Live positions from the <a href="https://adsb.lol/" target="_blank" rel="noopener noreferrer">ADSB.lol worldwide community receiver network</a>. Aircraft coverage varies with receiver availability, especially in remote areas.</p>
+        <p class="storm-source-note">Live positions from the <a href="https://adsb.lol/" target="_blank" rel="noopener noreferrer">ADSB.lol worldwide community receiver network</a>, with <a href="https://adsb.fi/" target="_blank" rel="noopener noreferrer">ADSB.fi</a> as a backup when the primary feed is unavailable or has no nearby aircraft. Coverage varies with receiver availability, especially in remote areas.</p>
       </section>
 
       <section class="storm-section" aria-labelledby="hurricanes-title">
@@ -570,7 +570,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Flights <span>ADSB.lol</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span> · Cyclones <span>GDACS</span> · Tornado reports <span>NOAA SPC</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Flights <span>ADSB.lol / ADSB.fi</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span> · Cyclones <span>GDACS</span> · Tornado reports <span>NOAA SPC</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -2283,7 +2283,8 @@
         }
         const data = await response.json();
         if (requestId !== flightRequest) return;
-        if (data.provider !== "ADSB.lol" || !Array.isArray(data.ac) || !Number.isFinite(Number(data.now))) {
+        if (!["ADSB.lol", "ADSB.fi"].includes(data.provider) ||
+            !Array.isArray(data.ac) || !Number.isFinite(Number(data.now))) {
           throw new Error("The aircraft feed returned invalid data.");
         }
         const cutoff = 2 * 60;
@@ -2316,7 +2317,8 @@
         if (requestId !== flightRequest || error.name === "AbortError") return;
         clearFlightLabels();
         document.querySelector("#flight-status").textContent =
-          error.message.includes("429") ? "RATE LIMITED" : "FEED UNAVAILABLE";
+          error.message.includes("429") || error.message.toLowerCase().includes("rate-limit")
+            ? "RATE LIMITED" : "FEED UNAVAILABLE";
         document.querySelector("#flight-status").classList.remove("flight-status-live");
         document.querySelector("#flight-grid").innerHTML =
           `<div class="flight-empty">${escapeHtml(error.message || "The live aircraft feed is temporarily unavailable.")} It will retry automatically.</div>`;
