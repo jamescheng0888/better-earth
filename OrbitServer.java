@@ -36,6 +36,7 @@ public class OrbitServer {
     private static final Map<String, CachedFeed> CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedFlightFeed> FLIGHT_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, String> MAP_DATA_CACHE = new ConcurrentHashMap<>();
+    private static volatile CachedWildfireFeed WILDFIRE_CACHE;
     private static final Map<String, String> MAP_DATA_URLS = Map.of(
         "/api/map/countries", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
         "/api/map/cities", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places_simple.geojson"
@@ -44,6 +45,7 @@ public class OrbitServer {
     private record Article(String title, String url, String source, String publishedAt) {}
     private record CachedFeed(Instant cachedAt, List<Article> articles) {}
     private record CachedFlightFeed(Instant cachedAt, String json) {}
+    private record CachedWildfireFeed(Instant cachedAt, String json) {}
 
     public static void main(String[] args) throws IOException {
         String host = System.getenv().getOrDefault("HOST", "127.0.0.1");
@@ -68,6 +70,10 @@ public class OrbitServer {
             }
             if (path.equals("/api/flights")) {
                 serveFlights(exchange);
+                return;
+            }
+            if (path.equals("/api/wildfires")) {
+                serveWildfires(exchange);
                 return;
             }
             if (MAP_DATA_URLS.containsKey(path)) {
@@ -159,6 +165,52 @@ public class OrbitServer {
                 .ifPresent(oldest -> FLIGHT_CACHE.remove(oldest.getKey(), oldest.getValue()));
         }
         FLIGHT_CACHE.put(cacheKey, new CachedFlightFeed(Instant.now(), data));
+        send(exchange, 200, "application/json; charset=utf-8", data);
+    }
+
+    private static void serveWildfires(HttpExchange exchange) throws IOException {
+        if (!exchange.getRequestMethod().equals("GET")) {
+            send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"Use GET.\"}");
+            return;
+        }
+        Instant now = Instant.now();
+        CachedWildfireFeed cached = WILDFIRE_CACHE;
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
+            send(exchange, 200, "application/json; charset=utf-8", cached.json());
+            return;
+        }
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(
+                "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&days=30&limit=1000"))
+            .timeout(Duration.ofSeconds(20))
+            .header("User-Agent", "BetterEarthWildfireMap/1.0")
+            .GET()
+            .build();
+        HttpResponse<String> response;
+        try {
+            response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (IOException error) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"NASA EONET wildfire data could not be reached.\"}");
+            return;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The NASA EONET wildfire request was interrupted.\"}");
+            return;
+        }
+        if (response.statusCode() != 200) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"NASA EONET returned HTTP " + response.statusCode() + ".\"}");
+            return;
+        }
+        String data = response.body();
+        if (!data.startsWith("{") || !data.contains("\"events\"")) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"NASA EONET returned invalid wildfire data.\"}");
+            return;
+        }
+        WILDFIRE_CACHE = new CachedWildfireFeed(Instant.now(), data);
         send(exchange, 200, "application/json; charset=utf-8", data);
     }
 
