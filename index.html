@@ -304,6 +304,27 @@
     .wildfire-card a:hover { text-decoration: underline; }
     .wildfire-empty { padding: 9px; border: 1px dashed rgba(255,131,74,.16); border-radius: 7px; color: #97918d; font-size: 10px; line-height: 1.5; }
     .wildfire-source-note { margin: 8px 0 0; color: #777e85; font: 8px/1.4 var(--mono); }
+    .conditions-panel {
+      width: min(100%, 404px); margin-top: 12px; padding: 13px;
+      border: 1px solid rgba(111,188,222,.2); border-radius: 10px;
+      background: linear-gradient(145deg, rgba(17,29,39,.88), rgba(13,18,24,.92));
+    }
+    .conditions-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .conditions-title { margin: 0; color: #e0edf4; font: 600 14px var(--display); }
+    .conditions-description { margin: 4px 0 0; color: #9299a1; font-size: 10px; line-height: 1.45; }
+    .conditions-status { flex: 0 0 auto; color: #8995a2; font: 8px var(--mono); letter-spacing: .05em; }
+    .conditions-status-live { color: #8ed3ec; }
+    .conditions-key { display: flex; flex-wrap: wrap; gap: 7px 12px; margin: 11px 0 9px; }
+    .conditions-key-item { display: inline-flex; align-items: center; gap: 5px; color: #9daab5; font: 8px var(--mono); }
+    .conditions-key-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .conditions-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .condition-card { min-width: 0; padding: 9px; border: 1px solid rgba(207,224,242,.09); border-radius: 7px; background: rgba(6,10,15,.42); }
+    .condition-label { color: #8e9ba7; font: 8px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+    .condition-value { margin-top: 4px; color: var(--condition-color, #dce4ec); font: 600 17px var(--display); }
+    .condition-detail { margin-top: 3px; color: #778591; font: 8px/1.35 var(--mono); }
+    .conditions-source-note { margin: 8px 0 0; color: #777e85; font: 8px/1.4 var(--mono); }
+    .conditions-source-note a { color: #9eb4c3; }
+    .conditions-empty { grid-column: 1 / -1; padding: 9px; border: 1px dashed rgba(111,188,222,.17); border-radius: 7px; color: #9299a1; font-size: 10px; line-height: 1.5; }
     .news-card.placeholder { pointer-events: none; }
     .placeholder .source { width: 75px; height: 8px; border-radius: 4px; background: #26313c; }
     .placeholder .article-title { height: 38px; width: 92%; background: linear-gradient(90deg, #1a232d, #202a35, #1a232d); background-size: 200% 100%; border-radius: 4px; animation: shimmer 1.6s infinite; }
@@ -408,6 +429,25 @@
             </div>
             <p class="wildfire-source-note" id="wildfire-source-note">NASA FIRMS satellite detections are used when configured; otherwise, Copernicus GWIS provides global near-real-time burnt-area reports.</p>
           </section>
+          <section class="conditions-panel" aria-labelledby="conditions-title">
+            <div class="conditions-head">
+              <div>
+                <h2 class="conditions-title" id="conditions-title">Local conditions</h2>
+                <p class="conditions-description" id="conditions-description">Search a location or enter coordinates to see current conditions.</p>
+              </div>
+              <span class="conditions-status" id="conditions-status" aria-live="polite">WAITING</span>
+            </div>
+            <div class="conditions-key" aria-label="Conditions key">
+              <span class="conditions-key-item"><span class="conditions-key-dot" style="background:#ffad67"></span>Temperature · °C</span>
+              <span class="conditions-key-item"><span class="conditions-key-dot" style="background:#74c6ef"></span>Humidity · %</span>
+              <span class="conditions-key-item"><span class="conditions-key-dot" style="background:#61d6c3"></span>Precipitation · mm (previous hour)</span>
+              <span class="conditions-key-item"><span class="conditions-key-dot" style="background:linear-gradient(90deg,#a5d672,#e5d45f,#f0a04b,#ed6c63,#ba83ce,#a75b5b)"></span>AQI · US scale</span>
+            </div>
+            <div class="conditions-grid" id="conditions-grid" aria-live="polite">
+              <div class="conditions-empty">Current temperature, humidity, precipitation, and air quality will appear here after you select a location.</div>
+            </div>
+            <p class="conditions-source-note" id="conditions-source-note">Global current estimates from <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>. Precipitation is the previous-hour total; AQI uses the U.S. scale: Good (0–50), Moderate (51–100), Sensitive groups (101–150), Unhealthy (151–200), Very unhealthy (201–300), Hazardous (301+).</p>
+          </section>
         </div>
 
         <div class="globe-column">
@@ -477,7 +517,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -537,6 +577,9 @@
     let earthquakeRequest = 0;
     let activeEarthquakeController = null;
     let earthquakeRefreshTimer = null;
+    let conditionsRequest = 0;
+    let activeConditionsController = null;
+    let conditionsRefreshTimer = null;
     const flightTracks = new Map();
     const maxTrackedFlights = 48;
     const maxTrackPoints = 18;
@@ -1319,6 +1362,7 @@
       setupFlightTracking(location);
       setupEarthquakeTracking(location);
       setupWildfireTracking(location);
+      setupConditionsTracking(location);
     }
 
     function setupFlightTracking(location) {
@@ -1576,6 +1620,130 @@
       selectedEarthquakeLabels = [];
       selectedEarthquakes = [];
       displayMapLabels();
+    }
+
+    function setupConditionsTracking(location) {
+      if (conditionsRefreshTimer) clearInterval(conditionsRefreshTimer);
+      conditionsRefreshTimer = null;
+      if (activeConditionsController) activeConditionsController.abort();
+      activeConditionsController = null;
+      conditionsRequest++;
+      document.querySelector("#conditions-description").textContent =
+        `Current conditions near ${location.locality || location.name || "this location"}.`;
+      document.querySelector("#conditions-status").textContent = "LOADING";
+      document.querySelector("#conditions-status").classList.remove("conditions-status-live");
+      document.querySelector("#conditions-grid").innerHTML =
+        '<div class="conditions-empty">Loading local weather and air quality…</div>';
+      fetchCurrentConditions(location);
+      conditionsRefreshTimer = window.setInterval(() => fetchCurrentConditions(location), 900000);
+    }
+
+    async function fetchCurrentConditions(location) {
+      const requestId = ++conditionsRequest;
+      if (activeConditionsController) activeConditionsController.abort();
+      const controller = new AbortController();
+      activeConditionsController = controller;
+      document.querySelector("#conditions-status").textContent = "UPDATING";
+      try {
+        const params = new URLSearchParams({
+          lat: String(location.lat),
+          lon: String(location.lon)
+        });
+        const response = await fetch(`/api/conditions?${params}`, { signal: controller.signal });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || `Conditions feed returned ${response.status}`);
+        }
+        const data = await response.json();
+        if (requestId !== conditionsRequest) return;
+        const weather = data.weather?.current;
+        const airQuality = data.airQuality?.current;
+        const temperature = weather?.temperature_2m;
+        const humidity = weather?.relative_humidity_2m;
+        const precipitation = weather?.precipitation;
+        const aqi = airQuality?.us_aqi;
+        if (data.provider !== "Open-Meteo" ||
+            !Number.isFinite(temperature) || !Number.isFinite(humidity) ||
+            !Number.isFinite(precipitation) || (aqi != null && !Number.isFinite(aqi))) {
+          throw new Error("The conditions service returned incomplete data for this location.");
+        }
+        renderCurrentConditions({
+          temperature,
+          humidity,
+          precipitation,
+          aqi: aqi == null ? null : Math.round(aqi),
+          time: weather.time,
+          temperatureUnit: data.weather?.current_units?.temperature_2m || "°C",
+          humidityUnit: data.weather?.current_units?.relative_humidity_2m || "%",
+          precipitationUnit: data.weather?.current_units?.precipitation || "mm"
+        });
+        const reportTime = typeof weather.time === "string" ? weather.time : "";
+        document.querySelector("#conditions-status").textContent =
+          `UPDATED ${reportTime.replace("T", " ")} UTC`;
+        document.querySelector("#conditions-status").classList.add("conditions-status-live");
+        document.querySelector("#conditions-description").textContent =
+          `Current conditions near ${location.locality || location.name || "this location"}.`;
+      } catch (error) {
+        if (requestId !== conditionsRequest || error.name === "AbortError") return;
+        document.querySelector("#conditions-status").textContent = "FEED UNAVAILABLE";
+        document.querySelector("#conditions-status").classList.remove("conditions-status-live");
+        document.querySelector("#conditions-grid").innerHTML =
+          `<div class="conditions-empty">${escapeHtml(error.message || "Current conditions are temporarily unavailable.")} The feed will retry automatically.</div>`;
+        console.error("Current weather and air quality could not be loaded.", error);
+      } finally {
+        if (requestId === conditionsRequest) activeConditionsController = null;
+      }
+    }
+
+    function airQualityLevel(aqi) {
+      if (aqi <= 50) return { label: "Good", color: "#a5d672" };
+      if (aqi <= 100) return { label: "Moderate", color: "#e5d45f" };
+      if (aqi <= 150) return { label: "Unhealthy for sensitive groups", color: "#f0a04b" };
+      if (aqi <= 200) return { label: "Unhealthy", color: "#ed6c63" };
+      if (aqi <= 300) return { label: "Very unhealthy", color: "#ba83ce" };
+      return { label: "Hazardous", color: "#a75b5b" };
+    }
+
+    function renderCurrentConditions(conditions) {
+      const airQuality = conditions.aqi == null
+        ? { label: "Unavailable", color: "#8995a2" }
+        : airQualityLevel(conditions.aqi);
+      const precipitationText = conditions.precipitation === 0
+        ? "No precipitation"
+        : `${conditions.precipitation.toFixed(1)} ${conditions.precipitationUnit} in the previous hour`;
+      const cards = [
+        {
+          label: "Temperature",
+          value: `${conditions.temperature.toFixed(1)} ${conditions.temperatureUnit}`,
+          detail: "Near-surface air",
+          color: "#ffad67"
+        },
+        {
+          label: "Humidity",
+          value: `${Math.round(conditions.humidity)} ${conditions.humidityUnit}`,
+          detail: "Relative humidity",
+          color: "#74c6ef"
+        },
+        {
+          label: "Precipitation",
+          value: `${conditions.precipitation.toFixed(1)} ${conditions.precipitationUnit}`,
+          detail: precipitationText,
+          color: "#61d6c3"
+        },
+        {
+          label: "Air quality · US AQI",
+          value: conditions.aqi == null ? "—" : String(conditions.aqi),
+          detail: airQuality.label,
+          color: airQuality.color
+        }
+      ];
+      document.querySelector("#conditions-grid").innerHTML = cards.map((card) =>
+        `<article class="condition-card" style="--condition-color:${card.color}">
+          <div class="condition-label">${escapeHtml(card.label)}</div>
+          <div class="condition-value">${escapeHtml(card.value)}</div>
+          <div class="condition-detail">${escapeHtml(card.detail)}</div>
+        </article>`
+      ).join("");
     }
 
     function setupWildfireTracking(location = null) {

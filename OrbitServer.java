@@ -43,6 +43,7 @@ public class OrbitServer {
     private static final Map<String, String> MAP_DATA_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedWildfireFeed> WILDFIRE_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CachedEarthquakeFeed> EARTHQUAKE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CachedConditionsFeed> CONDITIONS_CACHE = new ConcurrentHashMap<>();
     private static final String FIRMS_SOURCE_URL = "https://firms.modaps.eosdis.nasa.gov/map/";
     private static final Map<String, String> MAP_DATA_URLS = Map.of(
         "/api/map/countries", "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
@@ -54,6 +55,7 @@ public class OrbitServer {
     private record CachedFlightFeed(Instant cachedAt, String json) {}
     private record CachedWildfireFeed(Instant cachedAt, String json) {}
     private record CachedEarthquakeFeed(Instant cachedAt, String json) {}
+    private record CachedConditionsFeed(Instant cachedAt, String json) {}
     private record FireCell(int latitude, int longitude) {}
 
     private static final class FireCluster {
@@ -117,6 +119,10 @@ public class OrbitServer {
                 serveWildfires(exchange);
                 return;
             }
+            if (path.equals("/api/conditions")) {
+                serveConditions(exchange);
+                return;
+            }
             if (MAP_DATA_URLS.containsKey(path)) {
                 serveMapData(exchange, path);
                 return;
@@ -136,6 +142,97 @@ public class OrbitServer {
         } finally {
             exchange.close();
         }
+    }
+
+    private static void serveConditions(HttpExchange exchange) throws IOException {
+        if (!exchange.getRequestMethod().equals("GET")) {
+            send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"Use GET.\"}");
+            return;
+        }
+        String rawQuery = exchange.getRequestURI().getRawQuery();
+        double latitude;
+        double longitude;
+        try {
+            latitude = Double.parseDouble(queryParameter(rawQuery, "lat"));
+            longitude = Double.parseDouble(queryParameter(rawQuery, "lon"));
+        } catch (NumberFormatException | NullPointerException error) {
+            send(exchange, 400, "application/json; charset=utf-8",
+                "{\"error\":\"Valid latitude and longitude are required.\"}");
+            return;
+        }
+        if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            !Double.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            send(exchange, 400, "application/json; charset=utf-8",
+                "{\"error\":\"Coordinates must be within ±90° latitude and ±180° longitude.\"}");
+            return;
+        }
+
+        String cacheKey = String.format(java.util.Locale.ROOT, "%.3f,%.3f", latitude, longitude);
+        Instant now = Instant.now();
+        CachedConditionsFeed cached = CONDITIONS_CACHE.get(cacheKey);
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 10) {
+            send(exchange, 200, "application/json; charset=utf-8", cached.json());
+            return;
+        }
+
+        String point = String.format(java.util.Locale.ROOT, "latitude=%.5f&longitude=%.5f", latitude, longitude);
+        HttpRequest weatherRequest = HttpRequest.newBuilder(URI.create(
+                "https://api.open-meteo.com/v1/forecast?" + point +
+                    "&current=temperature_2m,relative_humidity_2m,precipitation&temperature_unit=celsius&timezone=UTC"))
+            .timeout(Duration.ofSeconds(20))
+            .header("User-Agent", "BetterEarthConditions/1.0")
+            .GET()
+            .build();
+        HttpRequest airRequest = HttpRequest.newBuilder(URI.create(
+                "https://air-quality-api.open-meteo.com/v1/air-quality?" + point +
+                    "&current=us_aqi&timezone=UTC"))
+            .timeout(Duration.ofSeconds(20))
+            .header("User-Agent", "BetterEarthConditions/1.0")
+            .GET()
+            .build();
+        java.util.concurrent.CompletableFuture<HttpResponse<String>> weatherFuture =
+            HTTP.sendAsync(weatherRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        java.util.concurrent.CompletableFuture<HttpResponse<String>> airFuture =
+            HTTP.sendAsync(airRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> weatherResponse;
+        HttpResponse<String> airResponse;
+        try {
+            java.util.concurrent.CompletableFuture.allOf(weatherFuture, airFuture).join();
+            weatherResponse = weatherFuture.join();
+            airResponse = airFuture.join();
+        } catch (java.util.concurrent.CompletionException error) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The global weather and air-quality feeds could not be reached.\"}");
+            return;
+        }
+        if (weatherResponse.statusCode() != 200) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"Open-Meteo weather returned HTTP " + weatherResponse.statusCode() + ".\"}");
+            return;
+        }
+        if (airResponse.statusCode() != 200) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"Open-Meteo air quality returned HTTP " + airResponse.statusCode() + ".\"}");
+            return;
+        }
+        String weather = weatherResponse.body();
+        String airQuality = airResponse.body();
+        if (!weather.startsWith("{") || !weather.contains("\"current\"") ||
+            !airQuality.startsWith("{") || !airQuality.contains("\"current\"")) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"Open-Meteo returned incomplete conditions data.\"}");
+            return;
+        }
+
+        String data = "{\"provider\":\"Open-Meteo\",\"weather\":" + weather +
+            ",\"airQuality\":" + airQuality + "}";
+        if (CONDITIONS_CACHE.size() >= 500) {
+            CONDITIONS_CACHE.entrySet().stream()
+                .min(Map.Entry.comparingByValue(java.util.Comparator.comparing(CachedConditionsFeed::cachedAt)))
+                .ifPresent(oldest -> CONDITIONS_CACHE.remove(oldest.getKey(), oldest.getValue()));
+        }
+        CONDITIONS_CACHE.put(cacheKey, new CachedConditionsFeed(Instant.now(), data));
+        send(exchange, 200, "application/json; charset=utf-8", data);
     }
 
     private static void serveFlights(HttpExchange exchange) throws Exception {
