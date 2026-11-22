@@ -440,13 +440,13 @@
             <div class="conditions-key" aria-label="Conditions key">
               <span class="conditions-key-item"><span class="conditions-key-dot" style="background:#ffad67"></span>Temperature · °C</span>
               <span class="conditions-key-item"><span class="conditions-key-dot" style="background:#74c6ef"></span>Humidity · %</span>
-              <span class="conditions-key-item"><span class="conditions-key-dot" style="background:#61d6c3"></span>Precipitation · mm (previous hour)</span>
+              <span class="conditions-key-item"><span class="conditions-key-dot" style="background:#61d6c3"></span>Precipitation · mm</span>
               <span class="conditions-key-item"><span class="conditions-key-dot" style="background:linear-gradient(90deg,#a5d672,#e5d45f,#f0a04b,#ed6c63,#ba83ce,#a75b5b)"></span>AQI · US scale</span>
             </div>
             <div class="conditions-grid" id="conditions-grid" aria-live="polite">
               <div class="conditions-empty">Current temperature, humidity, precipitation, and air quality will appear here after you select a location.</div>
             </div>
-            <p class="conditions-source-note" id="conditions-source-note">Global current estimates from <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>. Precipitation is the previous-hour total; AQI uses the U.S. scale: Good (0–50), Moderate (51–100), Sensitive groups (101–150), Unhealthy (151–200), Very unhealthy (201–300), Hazardous (301+).</p>
+            <p class="conditions-source-note" id="conditions-source-note">Global estimates from <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>, with <a href="https://api.met.no/weatherapi/locationforecast/2.0/documentation" target="_blank" rel="noopener noreferrer">MET Norway</a> as a weather fallback. AQI uses the U.S. scale: Good (0–50), Moderate (51–100), Sensitive groups (101–150), Unhealthy (151–200), Very unhealthy (201–300), Hazardous (301+).</p>
           </section>
         </div>
 
@@ -517,7 +517,7 @@
     </main>
     <footer>
       <span>AN OPEN WINDOW ON THE WORLD</span>
-      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span></span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span> · Conditions <span>Open-Meteo / MET Norway</span> · Wildfires <span>NASA FIRMS / Copernicus GWIS</span> · Earthquakes <span>USGS / EMSC</span></span>
       <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
     </footer>
   </div>
@@ -1662,27 +1662,44 @@
         const humidity = weather?.relative_humidity_2m;
         const precipitation = weather?.precipitation;
         const aqi = airQuality?.us_aqi;
-        if (data.provider !== "Open-Meteo" ||
+        if (data.provider !== "Global weather feeds" ||
             !Number.isFinite(temperature) || !Number.isFinite(humidity) ||
-            !Number.isFinite(precipitation) || (aqi != null && !Number.isFinite(aqi))) {
+            (precipitation != null && !Number.isFinite(precipitation)) ||
+            (aqi != null && !Number.isFinite(aqi))) {
           throw new Error("The conditions service returned incomplete data for this location.");
         }
         renderCurrentConditions({
           temperature,
           humidity,
-          precipitation,
+          precipitation: precipitation == null ? null : precipitation,
           aqi: aqi == null ? null : Math.round(aqi),
           time: weather.time,
           temperatureUnit: data.weather?.current_units?.temperature_2m || "°C",
           humidityUnit: data.weather?.current_units?.relative_humidity_2m || "%",
-          precipitationUnit: data.weather?.current_units?.precipitation || "mm"
+          precipitationUnit: data.weather?.current_units?.precipitation || "mm",
+          weatherSource: data.weatherSource || "global weather feed",
+          airQualitySource: data.airQualitySource || "unavailable"
         });
         const reportTime = typeof weather.time === "string" ? weather.time : "";
-        document.querySelector("#conditions-status").textContent =
-          `UPDATED ${reportTime.replace("T", " ")} UTC`;
-        document.querySelector("#conditions-status").classList.add("conditions-status-live");
+        const status = document.querySelector("#conditions-status");
+        status.textContent = data.stale
+          ? `CACHED DATA · ${reportTime.replace("T", " ")} UTC`
+          : aqi == null
+            ? `PARTIAL DATA · ${reportTime.replace("T", " ")} UTC`
+            : `UPDATED ${reportTime.replace("T", " ")} UTC`;
+        status.classList.toggle("conditions-status-live", !data.stale && aqi != null);
         document.querySelector("#conditions-description").textContent =
-          `Current conditions near ${location.locality || location.name || "this location"}.`;
+          `${data.stale ? "Most recently cached" : "Current"} conditions near ${location.locality || location.name || "this location"}.`;
+        const precipitationTiming = data.weatherSource === "MET Norway"
+          ? "Precipitation is the next-hour forecast amount."
+          : "Precipitation is the previous-hour total.";
+        document.querySelector("#conditions-source-note").textContent =
+          `Weather: ${data.weatherSource}. ${precipitationTiming} ` +
+          `${aqi == null
+            ? `Air quality is temporarily unavailable${data.airQualityError ? ` (${data.airQualityError})` : ""}; other conditions are shown.`
+            : `AQI: ${data.airQualitySource}, U.S. AQI scale.`} ` +
+          `${data.stale ? "Values are from the last successful update. " : ""}` +
+          "Global model estimates may differ from local station readings.";
       } catch (error) {
         if (requestId !== conditionsRequest || error.name === "AbortError") return;
         document.querySelector("#conditions-status").textContent = "FEED UNAVAILABLE";
@@ -1708,9 +1725,13 @@
       const airQuality = conditions.aqi == null
         ? { label: "Unavailable", color: "#8995a2" }
         : airQualityLevel(conditions.aqi);
-      const precipitationText = conditions.precipitation === 0
-        ? "No precipitation"
-        : `${conditions.precipitation.toFixed(1)} ${conditions.precipitationUnit} in the previous hour`;
+      const precipitationText = conditions.precipitation == null
+        ? "Unavailable from this weather feed"
+        : conditions.precipitation === 0
+          ? "No precipitation"
+          : `${conditions.precipitation.toFixed(1)} ${conditions.precipitationUnit} ${
+            conditions.weatherSource === "MET Norway" ? "forecast in the next hour" : "in the previous hour"
+          }`;
       const cards = [
         {
           label: "Temperature",
@@ -1726,7 +1747,9 @@
         },
         {
           label: "Precipitation",
-          value: `${conditions.precipitation.toFixed(1)} ${conditions.precipitationUnit}`,
+          value: conditions.precipitation == null
+            ? "—"
+            : `${conditions.precipitation.toFixed(1)} ${conditions.precipitationUnit}`,
           detail: precipitationText,
           color: "#61d6c3"
         },

@@ -170,7 +170,7 @@ public class OrbitServer {
         String cacheKey = String.format(java.util.Locale.ROOT, "%.3f,%.3f", latitude, longitude);
         Instant now = Instant.now();
         CachedConditionsFeed cached = CONDITIONS_CACHE.get(cacheKey);
-        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 10) {
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 20) {
             send(exchange, 200, "application/json; charset=utf-8", cached.json());
             return;
         }
@@ -190,42 +190,86 @@ public class OrbitServer {
             .header("User-Agent", "BetterEarthConditions/1.0")
             .GET()
             .build();
-        java.util.concurrent.CompletableFuture<HttpResponse<String>> weatherFuture =
-            HTTP.sendAsync(weatherRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        java.util.concurrent.CompletableFuture<HttpResponse<String>> airFuture =
-            HTTP.sendAsync(airRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        HttpResponse<String> weatherResponse;
-        HttpResponse<String> airResponse;
+
+        String weather;
+        String weatherSource = "Open-Meteo";
         try {
-            java.util.concurrent.CompletableFuture.allOf(weatherFuture, airFuture).join();
-            weatherResponse = weatherFuture.join();
-            airResponse = airFuture.join();
-        } catch (java.util.concurrent.CompletionException error) {
+            HttpResponse<String> weatherResponse = sendWithRetry(weatherRequest, 3);
+            if (weatherResponse.statusCode() == 200 && isOpenMeteoWeather(weatherResponse.body())) {
+                weather = weatherResponse.body();
+            } else {
+                weather = null;
+            }
+        } catch (IOException error) {
+            weather = null;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
             send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"The global weather and air-quality feeds could not be reached.\"}");
-            return;
-        }
-        if (weatherResponse.statusCode() != 200) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"Open-Meteo weather returned HTTP " + weatherResponse.statusCode() + ".\"}");
-            return;
-        }
-        if (airResponse.statusCode() != 200) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"Open-Meteo air quality returned HTTP " + airResponse.statusCode() + ".\"}");
-            return;
-        }
-        String weather = weatherResponse.body();
-        String airQuality = airResponse.body();
-        if (!weather.startsWith("{") || !weather.contains("\"current\"") ||
-            !airQuality.startsWith("{") || !airQuality.contains("\"current\"")) {
-            send(exchange, 502, "application/json; charset=utf-8",
-                "{\"error\":\"Open-Meteo returned incomplete conditions data.\"}");
+                "{\"error\":\"The weather request was interrupted.\"}");
             return;
         }
 
-        String data = "{\"provider\":\"Open-Meteo\",\"weather\":" + weather +
-            ",\"airQuality\":" + airQuality + "}";
+        if (weather == null) {
+            HttpRequest fallbackWeatherRequest = HttpRequest.newBuilder(URI.create(
+                    String.format(java.util.Locale.ROOT,
+                        "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%.5f&lon=%.5f",
+                        latitude, longitude)))
+                .timeout(Duration.ofSeconds(20))
+                .header("User-Agent", "BetterEarth/1.0 (global weather fallback)")
+                .GET()
+                .build();
+            try {
+                HttpResponse<String> fallbackResponse = sendWithRetry(fallbackWeatherRequest, 2);
+                if (fallbackResponse.statusCode() == 200) {
+                    weather = normalizeMetWeather(fallbackResponse.body(), latitude, longitude);
+                    if (weather != null) weatherSource = "MET Norway";
+                }
+            } catch (IOException error) {
+                weather = null;
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                send(exchange, 502, "application/json; charset=utf-8",
+                    "{\"error\":\"The global weather fallback request was interrupted.\"}");
+                return;
+            }
+        }
+
+        if (weather == null) {
+            if (cached != null) {
+                String staleData = cached.json().replaceFirst(
+                    "\"stale\":false", "\"stale\":true");
+                send(exchange, 200, "application/json; charset=utf-8", staleData);
+                return;
+            }
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"Current weather is temporarily unavailable from both global weather providers.\"}");
+            return;
+        }
+
+        String airQuality = "{\"current\":{\"us_aqi\":null,\"time\":null}}";
+        String airQualitySource = "unavailable";
+        String airQualityError = "";
+        try {
+            HttpResponse<String> airResponse = sendWithRetry(airRequest, 3);
+            if (airResponse.statusCode() == 200 && isConditionsJson(airResponse.body(), "\"current\"")) {
+                airQuality = airResponse.body();
+                airQualitySource = "Open-Meteo";
+            } else {
+                airQualityError = "Open-Meteo air quality returned HTTP " + airResponse.statusCode() + ".";
+            }
+        } catch (IOException error) {
+            airQualityError = "The global air-quality feed could not be reached.";
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The air-quality request was interrupted.\"}");
+            return;
+        }
+
+        String data = "{\"provider\":\"Global weather feeds\",\"weatherSource\":" + jsonString(weatherSource) +
+            ",\"airQualitySource\":" + jsonString(airQualitySource) +
+            ",\"airQualityError\":" + jsonString(airQualityError) +
+            ",\"stale\":false,\"weather\":" + weather + ",\"airQuality\":" + airQuality + "}";
         if (CONDITIONS_CACHE.size() >= 500) {
             CONDITIONS_CACHE.entrySet().stream()
                 .min(Map.Entry.comparingByValue(java.util.Comparator.comparing(CachedConditionsFeed::cachedAt)))
@@ -233,6 +277,61 @@ public class OrbitServer {
         }
         CONDITIONS_CACHE.put(cacheKey, new CachedConditionsFeed(Instant.now(), data));
         send(exchange, 200, "application/json; charset=utf-8", data);
+    }
+
+    private static HttpResponse<String> sendWithRetry(HttpRequest request, int maxAttempts)
+        throws IOException, InterruptedException {
+        HttpResponse<String> response = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if ((response.statusCode() != 429 && response.statusCode() < 500) || attempt == maxAttempts) {
+                return response;
+            }
+            Thread.sleep(250L * attempt);
+        }
+        return response;
+    }
+
+    private static boolean isConditionsJson(String json, String requiredField) {
+        return json.startsWith("{") && json.contains(requiredField);
+    }
+
+    private static boolean isOpenMeteoWeather(String json) {
+        return isConditionsJson(json, "\"current\"") &&
+            jsonNumber(json, "temperature_2m") != null &&
+            jsonNumber(json, "relative_humidity_2m") != null &&
+            jsonNumber(json, "precipitation") != null &&
+            jsonStringField(json, "time") != null;
+    }
+
+    private static String normalizeMetWeather(String json, double latitude, double longitude) {
+        Double temperature = jsonNumber(json, "air_temperature");
+        Double humidity = jsonNumber(json, "relative_humidity");
+        Double precipitation = jsonNumber(json, "precipitation_amount");
+        String time = jsonStringField(json, "time");
+        if (temperature == null || humidity == null || time == null) return null;
+        String precipJson = precipitation == null ? "null" : precipitation.toString();
+        return "{\"latitude\":" + latitude + ",\"longitude\":" + longitude +
+            ",\"current_units\":{\"time\":\"iso8601\",\"temperature_2m\":\"°C\"," +
+            "\"relative_humidity_2m\":\"%\",\"precipitation\":\"mm\"}," +
+            "\"current\":{\"time\":" + jsonString(time) +
+            ",\"temperature_2m\":" + temperature +
+            ",\"relative_humidity_2m\":" + humidity +
+            ",\"precipitation\":" + precipJson + "}}";
+    }
+
+    private static Double jsonNumber(String json, String field) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+            "\"" + java.util.regex.Pattern.quote(field) + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)")
+            .matcher(json);
+        return matcher.find() ? Double.valueOf(matcher.group(1)) : null;
+    }
+
+    private static String jsonStringField(String json, String field) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+            "\"" + java.util.regex.Pattern.quote(field) + "\"\\s*:\\s*\"([^\"]+)\"")
+            .matcher(json);
+        return matcher.find() ? matcher.group(1) : null;
     }
 
     private static void serveFlights(HttpExchange exchange) throws Exception {
