@@ -241,6 +241,15 @@
     .results-title { font: 600 21px var(--display); letter-spacing: -.04em; margin: 0; }
     .results-title span { color: var(--accent); }
     .results-meta { color: #75818d; font: 10px var(--mono); white-space: nowrap; }
+    .country-fact {
+      margin: 0 0 16px; padding: 13px 15px; border: 1px solid rgba(196,240,107,.2);
+      border-radius: 9px; background: linear-gradient(110deg, rgba(196,240,107,.07), rgba(12,17,24,.55));
+    }
+    .country-fact[hidden] { display: none; }
+    .country-fact-label { margin: 0 0 5px; color: var(--accent); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .country-fact-text { margin: 0; color: #d3dce5; font: 12px/1.6 var(--sans); }
+    .country-fact-source { display: inline-block; margin-top: 6px; color: #8995a2; font: 9px var(--mono); text-decoration: none; }
+    .country-fact-source:hover { color: var(--accent); }
     .news-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     .news-card {
       min-height: 165px; border: 1px solid var(--line); border-radius: 10px;
@@ -440,6 +449,11 @@
             </div>
           </form>
           <p class="hint">Try <kbd>Tokyo</kbd>, <kbd>Nairobi</kbd>, <kbd>40.7, -74.0</kbd></p>
+          <aside class="country-fact" id="country-fact" aria-live="polite" hidden>
+            <p class="country-fact-label" id="country-fact-label">A FACT ABOUT THIS COUNTRY</p>
+            <p class="country-fact-text" id="country-fact-text"></p>
+            <a class="country-fact-source" id="country-fact-source" target="_blank" rel="noopener noreferrer" hidden>Source: Wikipedia ↗</a>
+          </aside>
           <section class="wildfire-panel" aria-labelledby="wildfire-panel-title">
             <div class="wildfire-panel-head">
               <div>
@@ -595,6 +609,8 @@
     const searchButton = document.querySelector("#search-button");
     const toast = document.querySelector("#toast");
     let activeLocation = null;
+    let countryFactRequest = 0;
+    let activeCountryFactController = null;
     let toastTimer;
     let newsRequest = 0;
     let activeNewsController = null;
@@ -1421,6 +1437,7 @@
       updateDetailedImagery();
       document.querySelector("#results-title").innerHTML = `Stories from <span>${escapeHtml(label)}</span>`;
       document.querySelector("#results-meta").textContent = `${location.lat.toFixed(3)}° / ${location.lon.toFixed(3)}° · LAST 7 DAYS`;
+      fetchCountryFact(location);
       document.querySelector("#view-coords").textContent = `${Math.round(location.lat)}° / ${Math.round(location.lon)}°`;
       document.querySelector("#marker-label").firstChild.textContent = label;
       document.querySelector("#marker-coords").textContent = `${formatCoordinate(location.lat, "N", "S")} · ${formatCoordinate(location.lon, "E", "W")}`;
@@ -2585,6 +2602,53 @@
       } finally {
         clearTimeout(timeoutId);
         if (requestId === newsRequest) activeNewsController = null;
+      }
+    }
+
+    async function fetchCountryFact(location) {
+      const requestId = ++countryFactRequest;
+      if (activeCountryFactController) activeCountryFactController.abort();
+      activeCountryFactController = null;
+      const panel = document.querySelector("#country-fact");
+      const factText = document.querySelector("#country-fact-text");
+      const sourceLink = document.querySelector("#country-fact-source");
+      const country = typeof location.country === "string" ? location.country.trim() : "";
+      if (!country) {
+        panel.hidden = true;
+        return;
+      }
+
+      panel.hidden = false;
+      document.querySelector("#country-fact-label").textContent = `A FACT ABOUT ${country.toUpperCase()}`;
+      factText.textContent = "Finding a country fact…";
+      sourceLink.hidden = true;
+      const controller = new AbortController();
+      activeCountryFactController = controller;
+      try {
+        const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(country)}`;
+        const response = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error(`Wikipedia returned ${response.status}`);
+        const data = await response.json();
+        if (requestId !== countryFactRequest) return;
+        const extract = typeof data.extract === "string" ? data.extract.trim() : "";
+        const pageUrl = data.content_urls?.desktop?.page;
+        if (!extract || typeof pageUrl !== "string" || !pageUrl.startsWith("https://en.wikipedia.org/")) {
+          throw new Error("No country summary was available.");
+        }
+        const sentences = extract.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()) || [extract];
+        const detailSentences = sentences.slice(1);
+        const fact = detailSentences.find((sentence) =>
+          /\b(?:largest|smallest|only|most|oldest|youngest|highest|longest|world|archipelago|population|percent|million|billion|first|home to|known for)\b|\d|%/i.test(sentence)
+        ) || detailSentences[0] || sentences[0];
+        factText.textContent = fact;
+        sourceLink.href = pageUrl;
+        sourceLink.hidden = false;
+      } catch (error) {
+        if (requestId !== countryFactRequest || error.name === "AbortError") return;
+        factText.textContent = "A country fact is temporarily unavailable.";
+        console.error("The country fact could not be loaded.", error);
+      } finally {
+        if (requestId === countryFactRequest) activeCountryFactController = null;
       }
     }
 
