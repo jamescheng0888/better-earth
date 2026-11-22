@@ -1,0 +1,1701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c12" />
+  <title>Better Earth — News from anywhere</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080c12;
+      --surface: rgba(15, 21, 30, .82);
+      --surface-strong: #111822;
+      --line: rgba(210, 228, 249, .10);
+      --muted: #788493;
+      --text: #edf2f7;
+      --accent: #c4f06b;
+      --accent-dark: #98c545;
+      --blue: #70b7e9;
+      --mono: "DM Mono", monospace;
+      --sans: "DM Sans", sans-serif;
+      --display: "Manrope", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: var(--bg); }
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background:
+        radial-gradient(ellipse at 70% 41%, rgba(32, 63, 91, .21), transparent 34%),
+        radial-gradient(ellipse at 42% 102%, rgba(20, 33, 47, .24), transparent 44%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+    .topbar {
+      height: 74px;
+      padding: 0 clamp(22px, 5vw, 76px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(210, 228, 249, .07);
+      position: relative;
+      z-index: 3;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; color: var(--text); }
+    .brand-mark {
+      width: 30px; height: 30px; border: 1px solid rgba(196, 240, 107, .8);
+      border-radius: 50%; display: grid; place-items: center; position: relative;
+    }
+    .brand-mark::before { content: ""; width: 13px; height: 13px; border: 1px solid var(--accent); border-radius: 50%; }
+    .brand-mark::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); position: absolute; right: 3px; top: 5px; box-shadow: 0 0 9px var(--accent); }
+    .brand-name { font: 800 17px var(--display); letter-spacing: -.055em; }
+    .brand-name span { color: var(--accent); }
+    .topbar-right { display: flex; align-items: center; gap: 25px; color: #a4afbc; font-size: 12px; }
+    .live-label { display: inline-flex; gap: 8px; align-items: center; font: 11px var(--mono); letter-spacing: .04em; color: #b7c3d0; }
+    .live-dot { height: 6px; width: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px rgba(196,240,107,.8); }
+
+    main { flex: 1; position: relative; display: flex; flex-direction: column; }
+    .hero {
+      width: min(1320px, 100%);
+      min-height: 620px;
+      margin: 0 auto;
+      padding: 65px clamp(22px, 5vw, 76px) 25px;
+      display: grid;
+      grid-template-columns: minmax(330px, 420px) minmax(0, 1fr);
+      position: relative;
+    }
+    .intro { padding-top: 21px; position: relative; z-index: 2; }
+    .eyebrow {
+      display: flex; gap: 10px; align-items: center;
+      font: 10px var(--mono); text-transform: uppercase; letter-spacing: .17em;
+      color: var(--accent); margin: 0 0 20px;
+    }
+    .eyebrow::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+    h1 {
+      margin: 0; max-width: 430px; font: 600 clamp(41px, 5.2vw, 67px)/1.07 var(--display);
+      letter-spacing: -.065em;
+    }
+    h1 em { font-style: normal; color: var(--accent); }
+    .lede { max-width: 365px; color: #919eac; font-size: 14px; line-height: 1.75; margin: 19px 0 31px; }
+
+    .search-card {
+      width: min(100%, 404px);
+      border: 1px solid rgba(207, 224, 242, .13);
+      border-radius: 13px; background: linear-gradient(145deg, rgba(20, 28, 38, .94), rgba(13, 19, 27, .88));
+      box-shadow: 0 18px 50px rgba(0,0,0,.24);
+      padding: 6px;
+    }
+    .search-row { display: flex; align-items: center; gap: 10px; padding: 0 7px 0 12px; min-height: 49px; }
+    .search-icon { width: 16px; height: 16px; color: #7d8b98; flex: 0 0 auto; }
+    .search-row input {
+      min-width: 0; flex: 1; border: 0; outline: 0; background: transparent;
+      color: var(--text); font-size: 13px;
+    }
+    input::placeholder { color: #687582; }
+    .search-button {
+      border: 0; background: var(--accent); color: #17200c; height: 35px; padding: 0 14px;
+      border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background .2s, transform .2s;
+    }
+    .search-button:hover { background: #d3fb80; transform: translateY(-1px); }
+    .search-button:disabled { opacity: .6; cursor: wait; transform: none; }
+    .search-separator { height: 1px; background: var(--line); margin: 0 8px; }
+    .coords-label { display: flex; justify-content: space-between; align-items: center; padding: 13px 10px 8px; color: #8995a2; font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .coords-fields { display: grid; grid-template-columns: 1fr 1fr auto; gap: 7px; padding: 0 7px 7px; }
+    .coord-input {
+      width: 100%; height: 36px; border-radius: 7px; border: 1px solid rgba(207,224,242,.1);
+      background: rgba(6, 10, 15, .55); color: var(--text); outline: 0; padding: 0 10px; font: 11px var(--mono);
+    }
+    .coord-input:focus, .search-row:focus-within { border-color: rgba(196,240,107,.45); }
+    .coord-input::placeholder { font-family: var(--sans); font-size: 11px; }
+    .coord-button {
+      height: 36px; border: 1px solid rgba(196,240,107,.26); border-radius: 7px;
+      background: rgba(196,240,107,.08); color: var(--accent); font-size: 11px; font-weight: 600;
+      padding: 0 11px; cursor: pointer; transition: background .2s;
+    }
+    .coord-button:hover { background: rgba(196,240,107,.16); }
+    .hint { margin: 11px 3px 0; color: #65717e; font-size: 10px; line-height: 1.5; }
+    .hint kbd { border: 1px solid rgba(207,224,242,.12); border-radius: 4px; padding: 1px 5px; color: #9aa5b1; font: 10px var(--mono); }
+
+    .globe-column { min-width: 0; min-height: 0; margin: -18px -65px 0 -18px; display: flex; flex-direction: column; }
+    .globe-area { position: relative; flex: 1 1 auto; min-width: 0; min-height: 500px; }
+    #globe { position: absolute; inset: 0; width: 100%; height: 100%; outline: 0; }
+    .globe-caption {
+      position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; align-items: center; white-space: nowrap; color: #82909d;
+      font: 10px var(--mono); letter-spacing: .07em; text-transform: uppercase; pointer-events: none;
+    }
+    .globe-caption span { color: var(--accent); }
+    .map-legend {
+      position: absolute; left: 7%; bottom: 11%; z-index: 1;
+      display: flex; align-items: center; gap: 7px; padding: 9px 11px;
+      border: 1px solid rgba(207,224,242,.12); border-radius: 7px;
+      background: rgba(11,16,23,.72); backdrop-filter: blur(10px);
+      color: #d7e1eb; font: 10px var(--mono); letter-spacing: .04em; pointer-events: none;
+    }
+    .legend-country { color: var(--accent); font-size: 11px; }
+    .map-label-layer { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
+    .map-label {
+      position: absolute; left: 0; top: 0; visibility: hidden; white-space: nowrap;
+      transform: translate(-50%, -50%); border: 1px solid rgba(210,231,247,.55);
+      border-radius: 7px; background: rgba(5,12,20,.96); color: #fff;
+      box-shadow: 0 2px 12px rgba(0,0,0,.8), 0 0 0 1px rgba(5,12,20,.75);
+      font: 700 13px/1.2 var(--display); letter-spacing: .01em; padding: 7px 10px;
+      text-shadow: 0 1px 2px #000;
+    }
+    .map-label-country {
+      transform: translate(-50%, calc(-100% - 12px));
+      border-color: rgba(196,240,107,.9); color: #f7ffeb; font-size: 15px; padding: 9px 13px;
+    }
+    .map-label-city {
+      padding: 4px 7px; border-color: rgba(196,240,107,.38); border-radius: 5px;
+      background: rgba(5,12,20,.78); color: #dce8cf; font-size: 10px;
+      box-shadow: 0 1px 5px rgba(0,0,0,.65);
+      transform: translate(-50%, calc(-100% - 8px));
+    }
+    .map-label-city-primary {
+      padding: 6px 9px; border-color: rgba(196,240,107,.85);
+      background: rgba(28,42,19,.94); color: #fff; font-size: 12px;
+    }
+    .map-label-flight {
+      padding: 3px 6px; border-color: rgba(112,183,233,.72); border-radius: 4px;
+      background: rgba(6,18,29,.92); color: #d8efff; font: 500 9px/1.2 var(--mono);
+      box-shadow: 0 1px 5px rgba(0,0,0,.7);
+      transform: translate(-50%, -50%);
+    }
+    .map-label-flight-arrow {
+      display: inline-block; margin-right: 4px; color: #70b7e9; font-size: 11px;
+      line-height: 1; transform-origin: center;
+    }
+    .imagery-credit {
+      position: absolute; right: 3%; bottom: 8px; z-index: 4; max-width: 90%;
+      color: #aab4bf; font: 9px var(--sans); text-align: right; pointer-events: none;
+      text-shadow: 0 1px 3px #000;
+    }
+    @media (max-width: 620px) {
+      .imagery-credit { display: block; right: 1%; bottom: 1px; max-width: 85%; font-size: 7px; }
+    }
+    .zoom-controls {
+      position: relative; z-index: 2; align-self: flex-end; margin: 0 7% 8px 0;
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px; border: 1px solid rgba(207,224,242,.14); border-radius: 9px;
+      background: rgba(11,16,23,.82); backdrop-filter: blur(12px); pointer-events: auto;
+    }
+    .zoom-button {
+      width: 31px; height: 31px; display: grid; place-items: center;
+      border: 0; border-radius: 6px; background: transparent; color: #d8e2eb;
+      font: 20px/1 var(--sans); cursor: pointer; touch-action: manipulation;
+      transition: background .2s, color .2s;
+    }
+    .zoom-button:hover { background: rgba(196,240,107,.13); color: var(--accent); }
+    .zoom-button:disabled { opacity: .35; cursor: default; }
+    .zoom-level { min-width: 41px; text-align: center; color: #8995a2; font: 9px var(--mono); }
+    .globe-stats {
+      position: absolute; right: 3%; top: 18%; display: flex; flex-direction: column; gap: 5px;
+      font: 9px var(--mono); color: #71808c; letter-spacing: .08em; text-align: right; pointer-events: none;
+    }
+    .globe-stats strong { color: #bac6d1; font-weight: 400; }
+    .marker-label {
+      position: absolute; right: 1%; bottom: 18%; border: 1px solid rgba(207,224,242,.12);
+      border-radius: 7px; background: rgba(11, 16, 23, .72); backdrop-filter: blur(12px);
+      padding: 9px 12px; color: #b9c5d0; font: 10px var(--mono); pointer-events: none;
+      opacity: 0; transform: translateY(4px); transition: opacity .3s, transform .3s;
+    }
+    .marker-label.visible { opacity: 1; transform: translateY(0); }
+    .marker-label span { display: block; color: var(--accent); margin-top: 4px; font-size: 9px; }
+
+    .results-section { width: min(1168px, calc(100% - 44px)); margin: 0 auto 62px; }
+    .results-head {
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
+      border-top: 1px solid var(--line); padding-top: 22px; margin-bottom: 17px;
+    }
+    .results-kicker { color: #74818e; font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; margin: 0 0 8px; }
+    .results-title { font: 600 21px var(--display); letter-spacing: -.04em; margin: 0; }
+    .results-title span { color: var(--accent); }
+    .results-meta { color: #75818d; font: 10px var(--mono); white-space: nowrap; }
+    .news-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .news-card {
+      min-height: 165px; border: 1px solid var(--line); border-radius: 10px;
+      background: linear-gradient(150deg, rgba(20,28,38,.78), rgba(12,17,24,.82));
+      padding: 16px; display: flex; flex-direction: column; text-decoration: none; color: inherit;
+      transition: border-color .2s, transform .2s, background .2s;
+    }
+    .news-card:hover { border-color: rgba(196,240,107,.34); transform: translateY(-2px); background: rgba(22,31,42,.92); }
+    .article-top { display: flex; align-items: center; justify-content: space-between; gap: 9px; margin-bottom: 13px; }
+    .source { color: var(--accent); font: 9px var(--mono); letter-spacing: .04em; text-transform: uppercase; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .article-date { flex: 0 0 auto; color: #63707d; font: 9px var(--mono); }
+    .article-title { margin: 0; font: 600 13px/1.5 var(--sans); letter-spacing: -.01em; color: #dce4ec; }
+    .article-bottom { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 16px; color: #788592; font-size: 10px; }
+    .read-link { color: #a6b1bc; transition: color .2s; }
+    .news-card:hover .read-link { color: var(--accent); }
+    .flights-section { width: min(1168px, calc(100% - 44px)); margin: 0 auto 34px; }
+    .flights-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .flights-title { margin: 0; font: 600 17px var(--display); letter-spacing: -.025em; }
+    .flights-description { margin: 5px 0 0; color: #74818e; font-size: 11px; }
+    .flight-status { flex: 0 0 auto; color: #8995a2; font: 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    .flight-status-live { color: var(--accent); }
+    .flight-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .flight-card {
+      min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px;
+      background: linear-gradient(145deg, rgba(20,28,38,.68), rgba(12,17,24,.75));
+    }
+    .flight-ident { overflow: hidden; color: #dce4ec; font: 600 13px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+    .flight-type { margin-top: 4px; color: var(--accent); font: 9px var(--mono); }
+    .flight-details { display: flex; flex-wrap: wrap; gap: 5px 11px; margin-top: 11px; color: #84919d; font: 9px var(--mono); }
+    .flight-empty {
+      grid-column: 1 / -1; border: 1px dashed rgba(207,224,242,.12); border-radius: 8px;
+      padding: 13px; color: #7d8995; font-size: 11px;
+    }
+    .news-card.placeholder { pointer-events: none; }
+    .placeholder .source { width: 75px; height: 8px; border-radius: 4px; background: #26313c; }
+    .placeholder .article-title { height: 38px; width: 92%; background: linear-gradient(90deg, #1a232d, #202a35, #1a232d); background-size: 200% 100%; border-radius: 4px; animation: shimmer 1.6s infinite; }
+    .placeholder .article-bottom span { width: 80px; height: 7px; background: #1c2630; border-radius: 4px; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    .empty-state {
+      grid-column: 1 / -1; min-height: 120px; border: 1px dashed rgba(207,224,242,.13);
+      border-radius: 10px; display: grid; place-items: center; text-align: center;
+      color: #81909d; font-size: 12px; line-height: 1.6; padding: 25px;
+    }
+    .empty-state strong { color: #c6d0da; font-weight: 500; display: block; margin-bottom: 4px; }
+    footer {
+      border-top: 1px solid rgba(210,228,249,.07); padding: 15px clamp(22px,5vw,76px);
+      display: flex; justify-content: space-between; align-items: center; gap: 14px;
+      color: #65717d; font: 9px var(--mono); letter-spacing: .035em;
+    }
+    .footer-sources { display: flex; gap: 15px; }
+    .footer-sources span { color: #8995a0; }
+    .toast {
+      position: fixed; z-index: 5; top: 88px; left: 50%; transform: translate(-50%, -10px);
+      border: 1px solid rgba(239,126,126,.25); background: rgba(34,20,23,.94); color: #f0b5b5;
+      padding: 10px 14px; border-radius: 8px; font-size: 12px; opacity: 0; pointer-events: none; transition: .2s;
+    }
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: minmax(300px, 390px) minmax(0, 1fr); padding-top: 48px; }
+      .globe-column { margin-right: -110px; margin-left: -45px; }
+      .globe-stats { right: 11%; }
+      .news-grid { grid-template-columns: repeat(2, 1fr); }
+      .flight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 680px) {
+      .topbar { height: 62px; }
+      .topbar-right { gap: 0; }
+      .topbar-right > span:last-child { display: none; }
+      .hero { display: flex; flex-direction: column; padding: 39px 22px 8px; min-height: unset; }
+      .intro { padding-top: 0; }
+      h1 { font-size: clamp(42px, 11vw, 60px); }
+      .lede { margin: 14px 0 22px; font-size: 13px; }
+      .search-card { width: 100%; }
+      .globe-column { order: -1; position: absolute; top: 5px; right: -80px; width: 230px; height: 282px; min-height: 0; margin: 0; opacity: .72; }
+      .globe-area { min-height: 0; pointer-events: auto; }
+      .globe-stats, .globe-caption, .marker-label, .map-legend { display: none; }
+      .zoom-controls { align-self: flex-end; margin: 0 92px 0 0; transform: scale(.9); transform-origin: right center; pointer-events: auto; }
+      .results-section { width: calc(100% - 44px); margin-top: 35px; margin-bottom: 40px; }
+      .news-grid { grid-template-columns: 1fr; }
+      .flight-grid { grid-template-columns: 1fr 1fr; }
+      .news-card { min-height: 142px; }
+      .results-meta { font-size: 9px; }
+      footer { align-items: flex-start; flex-direction: column; gap: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Better Earth home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">better <span>earth.</span></span>
+      </a>
+      <div class="topbar-right">
+        <span class="live-label"><span class="live-dot"></span> WORLD DESK / LIVE</span>
+        <span>Stories have a place.</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-label="Explore news by location">
+        <div class="intro">
+          <p class="eyebrow">The world, in context</p>
+          <h1>Everywhere<br />has a <em>story.</em></h1>
+          <p class="lede">Choose a place on the planet. Find recent reporting that mentions it.</p>
+
+          <form class="search-card" id="location-form">
+            <div class="search-row">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.6"/><path d="m16 16 4.4 4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <input id="place-input" type="search" autocomplete="off" placeholder="Search any city or place..." aria-label="Search any city or place" />
+              <button class="search-button" id="search-button" type="submit">Explore</button>
+            </div>
+            <div class="search-separator"></div>
+            <div class="coords-label"><span>Or go by coordinates</span><span>LAT / LNG</span></div>
+            <div class="coords-fields">
+              <input class="coord-input" id="latitude" type="number" step="any" min="-90" max="90" placeholder="Latitude" aria-label="Latitude" />
+              <input class="coord-input" id="longitude" type="number" step="any" min="-180" max="180" placeholder="Longitude" aria-label="Longitude" />
+              <button class="coord-button" id="coords-button" type="button">Go to</button>
+            </div>
+          </form>
+          <p class="hint">Try <kbd>Tokyo</kbd>, <kbd>Nairobi</kbd>, <kbd>40.7, -74.0</kbd></p>
+        </div>
+
+        <div class="globe-column">
+          <div class="globe-area" aria-label="Interactive 3D Earth">
+            <canvas id="globe" aria-label="3D globe showing the selected location"></canvas>
+            <div class="map-legend" aria-hidden="true"><span class="legend-country">●</span><span id="label-mode">SEARCH A LOCATION TO REVEAL ITS COUNTRY</span></div>
+            <div class="map-label-layer" id="map-label-layer" aria-hidden="true"></div>
+            <div class="imagery-credit" id="imagery-credit" aria-live="polite"></div>
+            <div class="globe-stats"><span>EARTH / <strong>01</strong></span><span>ROTATION: <strong id="rotation-state">ACTIVE</strong></span><span>VIEW: <strong id="view-coords">000° / 000°</strong></span></div>
+            <div class="marker-label" id="marker-label">Location<span id="marker-coords">00.000° N · 00.000° E</span></div>
+            <div class="globe-caption"><span class="live-dot"></span> Drag to orbit <span>·</span> Scroll to zoom</div>
+          </div>
+          <div class="zoom-controls" aria-label="Globe zoom controls">
+            <button class="zoom-button" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+            <span class="zoom-level" id="zoom-level">1.0×</span>
+            <button class="zoom-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="flights-section" aria-labelledby="flights-title">
+        <div class="flights-head">
+          <div>
+            <h2 class="flights-title" id="flights-title">Live flights nearby</h2>
+            <p class="flights-description" id="flight-description">Search a location to see aircraft within 50 miles.</p>
+          </div>
+          <span class="flight-status" id="flight-status" aria-live="polite">WAITING FOR LOCATION</span>
+        </div>
+        <div class="flight-grid" id="flight-grid" aria-live="polite">
+          <div class="flight-empty">Live aircraft will appear here after you search a location.</div>
+        </div>
+      </section>
+
+      <section class="results-section" aria-live="polite">
+        <div class="results-head">
+          <div>
+            <p class="results-kicker">Recent reporting that mentions this place</p>
+            <h2 class="results-title" id="results-title">Stories from <span>everywhere</span></h2>
+          </div>
+          <span class="results-meta" id="results-meta">A PLACE TO BEGIN</span>
+        </div>
+        <div class="news-grid" id="news-grid">
+          <div class="empty-state"><div><strong>Your world desk is ready.</strong>Search a place or enter coordinates to see recent reporting that mentions it.</div></div>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <span>AN OPEN WINDOW ON THE WORLD</span>
+      <span class="footer-sources">Map data <span>Natural Earth</span> · Place data <span>OpenStreetMap</span></span>
+      <span>PLACE MATCH IS TEXTUAL, NOT A FACT-CHECK OR NEWSROOM LOCATION</span>
+    </footer>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const canvas = document.querySelector("#globe");
+    const globeArea = document.querySelector(".globe-area");
+    const newsGrid = document.querySelector("#news-grid");
+    const placeInput = document.querySelector("#place-input");
+    const searchButton = document.querySelector("#search-button");
+    const toast = document.querySelector("#toast");
+    let activeLocation = null;
+    let toastTimer;
+    let newsRequest = 0;
+    let activeNewsController = null;
+    let lookupRequest = 0;
+    let activeLookupButton = null;
+    let activeLookupRequest = 0;
+    let activeLookupIdleText = "";
+    let rotationFrom = new THREE.Quaternion();
+    let rotationTo = new THREE.Quaternion();
+    let rotationStartedAt = 0;
+    let rotatingToLocation = false;
+    let lastLabelUpdateAt = 0;
+    let selectedCountry = null;
+    let selectedCityLabels = [];
+    let selectedFlightLabels = [];
+    let selectedCountryLabel = null;
+    let selectedCountryBoundary = null;
+    let countryFeatures = [];
+    let cityFeatures = [];
+    let cityZoomActive = false;
+    let mapLabelsReady = Promise.resolve();
+    let flightRequest = 0;
+    let activeFlightController = null;
+    let flightRefreshTimer = null;
+    let flightCenter = null;
+    const flightTracks = new Map();
+    const maxTrackedFlights = 48;
+    const maxTrackPoints = 18;
+    const trackRetentionMs = 90 * 60 * 1000;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(33, 1, 0.01, 100);
+    camera.position.set(0, 0, 5.75);
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    const earthGroup = new THREE.Group();
+    scene.add(earthGroup);
+    const earthGeometry = new THREE.SphereGeometry(1, 96, 96);
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.setCrossOrigin("anonymous");
+    const earthTexture = textureLoader.load(
+      "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/earth_atmos_2048.jpg",
+      (texture) => { texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); },
+      undefined,
+      () => showToast("Earth imagery couldn’t load. Check your connection and refresh.")
+    );
+    earthTexture.colorSpace = THREE.SRGBColorSpace;
+    const earth = new THREE.Mesh(earthGeometry, new THREE.MeshStandardMaterial({
+      map: earthTexture, roughness: 0.92, metalness: 0.02
+    }));
+    earthGroup.add(earth);
+    const detailedImagery = new THREE.Group();
+    earthGroup.add(detailedImagery);
+    const detailedTextureCache = new Map();
+    const imageryCredit = document.querySelector("#imagery-credit");
+    let detailedImageryKey = "";
+    let detailedImageryRequest = 0;
+
+    function tileCoordinates(latitude, longitude, zoom) {
+      const tileCount = 2 ** zoom;
+      const clampedLatitude = THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
+      const latitudeRadians = clampedLatitude * Math.PI / 180;
+      return {
+        x: Math.floor((longitude + 180) / 360 * tileCount),
+        y: Math.floor((1 - Math.asinh(Math.tan(latitudeRadians)) / Math.PI) / 2 * tileCount)
+      };
+    }
+
+    function detailedTileGeometry(zoom, tileX, tileY, radius) {
+      const tileCount = 2 ** zoom;
+      const segments = 16;
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+      for (let row = 0; row <= segments; row++) {
+        const mercatorY = (tileY + row / segments) / tileCount;
+        const latitude = Math.atan(Math.sinh(Math.PI * (1 - 2 * mercatorY))) * 180 / Math.PI;
+        for (let column = 0; column <= segments; column++) {
+          const longitude = ((tileX + column / segments) / tileCount) * 360 - 180;
+          const point = locationVector(latitude, longitude).multiplyScalar(radius);
+          positions.push(point.x, point.y, point.z);
+          uvs.push(column / segments, 1 - row / segments);
+        }
+      }
+      for (let row = 0; row < segments; row++) {
+        for (let column = 0; column < segments; column++) {
+          const topLeft = row * (segments + 1) + column;
+          const topRight = topLeft + 1;
+          const bottomLeft = topLeft + segments + 1;
+          const bottomRight = bottomLeft + 1;
+          indices.push(topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight);
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    function featheredTileTexture(source, tileX, tileY, centerTileX, centerTileY, gridSide) {
+      const canvas = document.createElement("canvas");
+      canvas.width = source.image.naturalWidth || source.image.width;
+      canvas.height = source.image.naturalHeight || source.image.height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Could not prepare satellite imagery.");
+      context.drawImage(source.image, 0, 0);
+      const image = context.getImageData(0, 0, canvas.width, canvas.height);
+      const gridOffset = Math.floor(gridSide / 2);
+      for (let row = 0; row < canvas.height; row++) {
+        const gridY = (tileY - centerTileY + gridOffset + (row + 0.5) / canvas.height) / gridSide;
+        for (let column = 0; column < canvas.width; column++) {
+          const gridX = (tileX - centerTileX + gridOffset + (column + 0.5) / canvas.width) / gridSide;
+          const edge = Math.max(0, Math.min(gridX, 1 - gridX, gridY, 1 - gridY) / 0.28);
+          const alpha = edge * edge * (3 - 2 * edge);
+          image.data[(row * canvas.width + column) * 4 + 3] *= alpha;
+        }
+      }
+      context.putImageData(image, 0, 0);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return texture;
+    }
+
+    function detailedTileTexture(zoom, x, y) {
+      const tileCount = 2 ** zoom;
+      const wrappedX = ((x % tileCount) + tileCount) % tileCount;
+      const key = `${zoom}/${y}/${wrappedX}`;
+      if (detailedTextureCache.has(key)) {
+        const cached = detailedTextureCache.get(key);
+        detailedTextureCache.delete(key);
+        detailedTextureCache.set(key, cached);
+        return cached.promise;
+      }
+      const cached = { texture: null, promise: null };
+      cached.promise = textureLoader.loadAsync(
+        `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${key}`
+      ).then((texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        cached.texture = texture;
+        return texture;
+      }).catch((error) => {
+        if (detailedTextureCache.get(key) === cached) detailedTextureCache.delete(key);
+        throw error;
+      });
+      detailedTextureCache.set(key, cached);
+      return cached.promise;
+    }
+
+    function clearDetailedImageryMeshes() {
+      for (const mesh of detailedImagery.children) {
+        mesh.geometry.dispose();
+        mesh.material.map.dispose();
+        mesh.material.dispose();
+      }
+      detailedImagery.clear();
+    }
+
+    function pruneDetailedTextureCache() {
+      if (detailedTextureCache.size <= 300) return;
+      const activeTextures = new Set(detailedImagery.children.map((mesh) => mesh.material.map));
+      for (const [key, cached] of detailedTextureCache) {
+        if (detailedTextureCache.size <= 300) break;
+        if (!cached.texture || activeTextures.has(cached.texture)) continue;
+        detailedTextureCache.delete(key);
+        cached.texture.dispose();
+      }
+    }
+
+    async function updateDetailedImagery() {
+      const distance = camera.position.distanceTo(controls.target);
+      if (!activeLocation) {
+        if (detailedImageryKey || detailedImagery.children.length || imageryCredit.textContent) {
+          detailedImageryKey = "";
+          detailedImageryRequest++;
+          clearDetailedImageryMeshes();
+          imageryCredit.textContent = "";
+        }
+        return;
+      }
+      const detailedZoom = THREE.MathUtils.clamp(Math.round(16 - distance), 12, 15);
+      const imageryLevels = [
+        { zoom: 6, side: 9, radius: 1.001 },
+        { zoom: 9, side: 9, radius: 1.002 },
+        { zoom: 11, side: 9, radius: 1.0025 },
+        { zoom: detailedZoom, side: 7, radius: 1.003 }
+      ].filter((level, index, levels) =>
+        levels.findIndex((other) => other.zoom === level.zoom) === index
+      );
+      const key = imageryLevels.map((level) => {
+        const center = tileCoordinates(activeLocation.lat, activeLocation.lon, level.zoom);
+        return `${level.zoom}/${center.x}/${center.y}`;
+      }).join("|");
+      if (key === detailedImageryKey) return;
+      detailedImageryKey = key;
+      const requestId = ++detailedImageryRequest;
+      imageryCredit.textContent = "Loading detailed satellite imagery…";
+      const tiles = [];
+      for (const level of imageryLevels) {
+        const center = tileCoordinates(activeLocation.lat, activeLocation.lon, level.zoom);
+        const halfSide = Math.floor(level.side / 2);
+        for (let row = -halfSide; row <= halfSide; row++) {
+          const tileY = center.y + row;
+          if (tileY < 0 || tileY >= 2 ** level.zoom) continue;
+          for (let column = -halfSide; column <= halfSide; column++) {
+            const tileX = center.x + column;
+            tiles.push({
+              zoom: level.zoom,
+              centerTileX: center.x,
+              centerTileY: center.y,
+              gridSide: level.side,
+              radius: level.radius,
+              tileX,
+              tileY,
+              texture: detailedTileTexture(level.zoom, tileX, tileY)
+            });
+          }
+        }
+      }
+      try {
+        const loadedTiles = await Promise.all(tiles.map(async (tile) => ({
+          ...tile,
+          texture: await tile.texture
+        })));
+        if (requestId !== detailedImageryRequest || key !== detailedImageryKey) return;
+        const meshes = loadedTiles.map((tile) => new THREE.Mesh(
+          detailedTileGeometry(tile.zoom, tile.tileX, tile.tileY, tile.radius),
+          new THREE.MeshBasicMaterial({
+            map: featheredTileTexture(
+              tile.texture,
+              tile.tileX,
+              tile.tileY,
+              tile.centerTileX,
+              tile.centerTileY,
+              tile.gridSide
+            ),
+            side: THREE.DoubleSide,
+            toneMapped: false,
+            transparent: true,
+            depthWrite: false
+          })
+        ));
+        detailedImagery.add(...meshes);
+        for (const mesh of [...detailedImagery.children].slice(0, -meshes.length)) {
+          detailedImagery.remove(mesh);
+          mesh.geometry.dispose();
+          mesh.material.map.dispose();
+          mesh.material.dispose();
+        }
+        pruneDetailedTextureCache();
+        imageryCredit.textContent = "Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community";
+      } catch (error) {
+        if (requestId !== detailedImageryRequest) return;
+        detailedImageryKey = "";
+        imageryCredit.textContent = "Detailed imagery is unavailable right now.";
+        console.error("Detailed satellite imagery could not be loaded.", error);
+      }
+    }
+
+    scene.add(new THREE.AmbientLight(0x9eb8d1, 1.1));
+    const sunlight = new THREE.DirectionalLight(0xe4f0ff, 2.45);
+    sunlight.position.set(-3, 2, 4);
+    scene.add(sunlight);
+    const fillLight = new THREE.DirectionalLight(0x346789, 0.8);
+    fillLight.position.set(3, -1, -3);
+    scene.add(fillLight);
+
+    const starGeometry = new THREE.BufferGeometry();
+    const starPositions = [];
+    for (let i = 0; i < 650; i++) {
+      const radius = 4 + Math.random() * 18;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      starPositions.push(radius * Math.sin(phi) * Math.cos(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.sin(theta));
+    }
+    starGeometry.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
+    scene.add(new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0xb7d3e8, size: 0.012, transparent: true, opacity: 0.65, sizeAttenuation: true })));
+
+    const marker = new THREE.Group();
+    const markerCore = new THREE.Mesh(new THREE.SphereGeometry(0.018, 20, 20), new THREE.MeshBasicMaterial({ color: 0xc4f06b }));
+    marker.add(markerCore);
+    marker.visible = false;
+    earthGroup.add(marker);
+
+    const flightMarkerGroup = new THREE.Group();
+    const flightMarkerMaterial = new THREE.PointsMaterial({
+      color: 0x70b7e9, size: 7, sizeAttenuation: false, depthTest: true
+    });
+    earthGroup.add(flightMarkerGroup);
+    const flightTrailGroup = new THREE.Group();
+    const flightTrailMaterial = new THREE.LineBasicMaterial({
+      color: 0x70b7e9, transparent: true, opacity: 0.78, depthTest: true, depthWrite: false
+    });
+    earthGroup.add(flightTrailGroup);
+
+    const mapLabelLayer = document.querySelector("#map-label-layer");
+    const mapLabels = [];
+
+    function countryBoundaryPositions(feature) {
+      const polygons = feature.geometry.type === "Polygon"
+        ? [feature.geometry.coordinates]
+        : feature.geometry.type === "MultiPolygon" ? feature.geometry.coordinates : [];
+      const positions = [];
+      for (const polygon of polygons) {
+        for (const ring of polygon) {
+          for (let i = 1; i < ring.length; i++) {
+            for (const point of [ring[i - 1], ring[i]]) {
+              const position = locationVector(point[1], point[0]).multiplyScalar(1.002);
+              positions.push(position.x, position.y, position.z);
+            }
+          }
+        }
+      }
+      return positions;
+    }
+
+    function createMapLabel(name, latitude, longitude, kind, rank = 0, isPrimary = false) {
+      const element = document.createElement("div");
+      element.className = `map-label map-label-${kind}`;
+      if (isPrimary) element.classList.add("map-label-city-primary");
+      element.textContent = name;
+      element.style.visibility = "hidden";
+      mapLabelLayer.append(element);
+      return {
+        element,
+        position: locationVector(latitude, longitude).multiplyScalar(1.018),
+        kind,
+        rank,
+        isPrimary
+      };
+    }
+
+    function displayMapLabels() {
+      const bounds = mapLabelLayer.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      const distance = camera.position.distanceTo(controls.target);
+      const isCitySearch = Boolean(activeLocation?.isCity);
+      const showNearbyCities = isCitySearch && distance < 2.2;
+      const showCities = isCitySearch
+        ? showNearbyCities
+        : selectedCountry && selectedCityLabels.length > 0 && distance < 2.7;
+      const labelMode = !activeLocation
+        ? "SEARCH A LOCATION TO REVEAL ITS COUNTRY"
+        : isCitySearch
+          ? showNearbyCities
+            ? "NEARBY CITY NAMES · ZOOM OUT FOR SELECTED CITY"
+            : selectedCityLabels.length > 1
+              ? "CITY · ZOOM IN TO SEE NEARBY CITIES"
+              : "CITY · NO NEARBY CITY DATA"
+        : !selectedCountry ? "COUNTRY LABEL UNAVAILABLE FOR THIS LOCATION"
+        : showCities ? "CITY NAMES · ZOOM OUT FOR COUNTRY"
+          : selectedCityLabels.length
+            ? "COUNTRY · ZOOM IN TO SEE ITS CITIES"
+            : "COUNTRY · CITY LABELS UNAVAILABLE";
+      document.querySelector("#label-mode").textContent =
+        `${labelMode}${selectedFlightLabels.length ? " · FLIGHTS ON GLOBE" : ""}`;
+      camera.updateMatrixWorld();
+      const cameraDirection = camera.position.clone().sub(controls.target).normalize();
+      const placeCandidates = isCitySearch
+        ? showNearbyCities ? selectedCityLabels : selectedCityLabels.filter((label) => label.isPrimary)
+        : !selectedCountry ? [] : showCities ? selectedCityLabels : selectedCountryLabel ? [selectedCountryLabel] : [];
+      const candidates = [
+        ...placeCandidates.filter((label) => label.isPrimary || label.kind === "country"),
+        ...selectedFlightLabels,
+        ...placeCandidates.filter((label) => !label.isPrimary && label.kind !== "country")
+      ];
+      const cells = new Map();
+      const cellSize = showCities || selectedFlightLabels.length ? 64 : 140;
+      const collisionGap = showCities ? 8 : selectedFlightLabels.length ? 4 : 0;
+      for (const label of mapLabels) label.element.style.visibility = "hidden";
+      for (const label of candidates) {
+        const worldPosition = label.position.clone().applyQuaternion(earthGroup.quaternion);
+        if (worldPosition.dot(cameraDirection) < 0.035) continue;
+        const projected = worldPosition.project(camera);
+        if (projected.z < -1 || projected.z > 1) continue;
+        const x = (projected.x * 0.5 + 0.5) * bounds.width;
+        const y = (-projected.y * 0.5 + 0.5) * bounds.height;
+        if (label.kind === "flight" && Number.isFinite(label.heading)) {
+          const endPosition = flightHeadingEndpoint(label.latitude, label.longitude, label.heading)
+            .multiplyScalar(1.018)
+            .applyQuaternion(earthGroup.quaternion)
+            .project(camera);
+          const endX = (endPosition.x * 0.5 + 0.5) * bounds.width;
+          const endY = (-endPosition.y * 0.5 + 0.5) * bounds.height;
+          const arrow = label.element.querySelector(".map-label-flight-arrow");
+          arrow.style.transform = `rotate(${Math.atan2(endY - y, endX - x)}rad)`;
+        }
+        const width = label.element.offsetWidth;
+        const height = label.element.offsetHeight;
+        const labelOffset = label.kind === "country" ? 12 : 8;
+        const offsets = label.kind === "flight"
+          ? [
+              [width / 2 + 9, 0], [-width / 2 - 9, 0],
+              [0, -height / 2 - 9], [0, height / 2 + 9],
+              [width / 2 + 9, -height / 2 - 3], [-width / 2 - 9, height / 2 + 3]
+            ]
+          : [[0, 0]];
+        let placement = null;
+        for (const [offsetX, offsetY] of offsets) {
+          const labelX = x + offsetX;
+          const labelY = y + offsetY;
+          const rect = label.kind === "flight"
+            ? {
+                left: labelX - width / 2,
+                right: labelX + width / 2,
+                top: labelY - height / 2,
+                bottom: labelY + height / 2
+              }
+            : {
+                left: labelX - width / 2,
+                right: labelX + width / 2,
+                top: labelY - height - labelOffset,
+                bottom: labelY - labelOffset
+              };
+          if (rect.right < 0 || rect.left > bounds.width || rect.bottom < 0 || rect.top > bounds.height) continue;
+          const collisionRect = {
+            left: rect.left - collisionGap,
+            right: rect.right + collisionGap,
+            top: rect.top - collisionGap,
+            bottom: rect.bottom + collisionGap
+          };
+          const leftCell = Math.floor(collisionRect.left / cellSize);
+          const rightCell = Math.floor(collisionRect.right / cellSize);
+          const topCell = Math.floor(collisionRect.top / cellSize);
+          const bottomCell = Math.floor(collisionRect.bottom / cellSize);
+          let overlaps = false;
+          for (let row = topCell; row <= bottomCell && !overlaps; row++) {
+            for (let column = leftCell; column <= rightCell && !overlaps; column++) {
+              const occupants = cells.get(`${column},${row}`) || [];
+              overlaps = occupants.some((other) =>
+                collisionRect.left < other.right && collisionRect.right > other.left &&
+                collisionRect.top < other.bottom && collisionRect.bottom > other.top
+              );
+            }
+          }
+          if (overlaps) continue;
+          placement = { labelX, labelY, collisionRect, leftCell, rightCell, topCell, bottomCell };
+          break;
+        }
+        if (!placement) continue;
+        for (let row = placement.topCell; row <= placement.bottomCell; row++) {
+          for (let column = placement.leftCell; column <= placement.rightCell; column++) {
+            const key = `${column},${row}`;
+            if (!cells.has(key)) cells.set(key, []);
+            cells.get(key).push(placement.collisionRect);
+          }
+        }
+        label.element.style.left = `${placement.labelX}px`;
+        label.element.style.top = `${placement.labelY}px`;
+        label.element.style.visibility = "visible";
+      }
+    }
+
+    function normalizeCountryName(name) {
+      return String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+
+    function distanceBetweenLocationsKm(latitudeA, longitudeA, latitudeB, longitudeB) {
+      const toRadians = (degrees) => degrees * Math.PI / 180;
+      const latitudeDelta = toRadians(latitudeB - latitudeA);
+      const longitudeDelta = toRadians(longitudeB - longitudeA);
+      const latitudeARadians = toRadians(latitudeA);
+      const latitudeBRadians = toRadians(latitudeB);
+      const haversine = Math.min(1, Math.sin(latitudeDelta / 2) ** 2 +
+        Math.cos(latitudeARadians) * Math.cos(latitudeBRadians) * Math.sin(longitudeDelta / 2) ** 2);
+      return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    }
+
+    function findCountry(location) {
+      const countryCode = String(location.countryCode || "").toUpperCase();
+      const countryName = normalizeCountryName(location.country);
+      return countryFeatures.find((feature) => {
+        const properties = feature.properties || {};
+        return (countryCode && [properties.ISO_A2, properties.ISO_A2_EH].includes(countryCode)) ||
+          (countryName && [properties.ADMIN, properties.NAME, properties.NAME_LONG].some((name) => normalizeCountryName(name) === countryName));
+      }) || null;
+    }
+
+    function selectMapLocation(location) {
+      for (const label of mapLabels) label.element.remove();
+      mapLabels.length = 0;
+      mapLabelLayer.replaceChildren();
+      selectedCountryLabel = null;
+      selectedCityLabels = [];
+      selectedFlightLabels = [];
+      selectedCountry = findCountry(location);
+      if (location.isCity) {
+        const primaryCityLabel = createMapLabel(
+          location.locality || location.name || "Selected city",
+          location.lat,
+          location.lon,
+          "city",
+          Number.NEGATIVE_INFINITY,
+          true
+        );
+        mapLabels.push(primaryCityLabel);
+        const nearbyCities = cityFeatures
+          .map((feature) => {
+            const properties = feature.properties || {};
+            const coordinates = feature.geometry?.coordinates || [];
+            const longitude = Number(coordinates[0]);
+            const latitude = Number(coordinates[1]);
+            return {
+              name: properties.name,
+              latitude,
+              longitude,
+              distance: distanceBetweenLocationsKm(location.lat, location.lon, latitude, longitude),
+              population: Number(properties.pop_max)
+            };
+          })
+          .filter((city) =>
+            city.name && Number.isFinite(city.latitude) && Number.isFinite(city.longitude) &&
+            city.distance > 5 && city.distance <= 250 && city.population >= 50000
+          )
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, 40);
+        selectedCityLabels = [
+          primaryCityLabel,
+          ...nearbyCities.map((city) =>
+            createMapLabel(city.name, city.latitude, city.longitude, "city", city.distance)
+          )
+        ];
+        mapLabels.push(...selectedCityLabels.slice(1));
+      } else if (selectedCountry) {
+        const properties = selectedCountry.properties;
+        selectedCountryLabel = createMapLabel(
+          properties.ADMIN || properties.NAME,
+          location.lat,
+          location.lon,
+          "country"
+        );
+        mapLabels.push(selectedCountryLabel);
+
+        const countryIso = properties.ADM0_A3;
+        const countryCities = cityFeatures
+          .filter((feature) =>
+            feature.properties?.adm0_a3 === countryIso &&
+            Number(feature.properties.pop_max) >= 200000 &&
+            feature.geometry?.coordinates?.length >= 2
+          )
+          .sort((a, b) => {
+            const aPrimary = normalizeCountryName(a.properties.name) === normalizeCountryName(location.locality);
+            const bPrimary = normalizeCountryName(b.properties.name) === normalizeCountryName(location.locality);
+            return Number(bPrimary) - Number(aPrimary) ||
+              Number(b.properties.pop_max) - Number(a.properties.pop_max);
+          })
+          .slice(0, 100);
+        selectedCityLabels = countryCities.map((feature) => {
+            const properties = feature.properties;
+            const [longitude, latitude] = feature.geometry.coordinates;
+            return createMapLabel(properties.name, Number(latitude), Number(longitude), "city", -Number(properties.pop_max));
+          });
+        mapLabels.push(...selectedCityLabels);
+      }
+
+      if (selectedCountryBoundary) {
+        earthGroup.remove(selectedCountryBoundary);
+        selectedCountryBoundary.geometry.dispose();
+        selectedCountryBoundary.material.dispose();
+        selectedCountryBoundary = null;
+      }
+      if (selectedCountry && !location.isCity) {
+        const positions = countryBoundaryPositions(selectedCountry);
+        if (positions.length) {
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+          selectedCountryBoundary = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
+            color: 0xc4f06b, transparent: true, opacity: 0.9, depthTest: true, depthWrite: false
+          }));
+          selectedCountryBoundary.renderOrder = 1;
+          earthGroup.add(selectedCountryBoundary);
+        }
+      }
+      displayMapLabels();
+    }
+
+    async function loadMapLabels() {
+      try {
+        const [countryResponse, cityResponse] = await Promise.all([
+          fetch("/api/map/countries"), fetch("/api/map/cities")
+        ]);
+        if (!countryResponse.ok || !cityResponse.ok) throw new Error("Map label data is unavailable.");
+        const [countries, cities] = await Promise.all([countryResponse.json(), cityResponse.json()]);
+        countryFeatures = countries.features || [];
+        cityFeatures = cities.features || [];
+        if (activeLocation) selectMapLocation(activeLocation);
+      } catch (error) {
+        showToast("Country and city labels couldn’t load. Check your connection and refresh.");
+      }
+    }
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enablePan = false;
+    controls.enableZoom = true;
+    controls.zoomSpeed = 0.75;
+    controls.minDistance = 1.04;
+    controls.maxDistance = 7.2;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.055;
+    controls.rotateSpeed = 0.48;
+    controls.minPolarAngle = Math.PI * 0.18;
+    controls.maxPolarAngle = Math.PI * 0.82;
+    controls.target.set(0, 0, 0);
+    const zoomLevel = document.querySelector("#zoom-level");
+    const zoomIn = document.querySelector("#zoom-in");
+    const zoomOut = document.querySelector("#zoom-out");
+    const zoomDistanceScale = 6.76;
+    const minButtonZoom = 0.8;
+    const maxButtonZoom = 6.5;
+    function updateZoomControls() {
+      const zoom = zoomDistanceScale / camera.position.distanceTo(controls.target);
+      const displayedZoom = Math.round(zoom * 10) / 10;
+      zoomLevel.textContent = `${displayedZoom.toFixed(1)}×`;
+      zoomIn.disabled = displayedZoom >= maxButtonZoom;
+      zoomOut.disabled = displayedZoom <= minButtonZoom;
+    }
+    function zoomBy(increment) {
+      const offset = camera.position.clone().sub(controls.target);
+      const currentZoom = Math.round((zoomDistanceScale / offset.length()) * 10) / 10;
+      const nextZoom = THREE.MathUtils.clamp(
+        Number((currentZoom + increment).toFixed(1)),
+        minButtonZoom,
+        maxButtonZoom
+      );
+      if (nextZoom === currentZoom) return false;
+      const distance = THREE.MathUtils.clamp(zoomDistanceScale / nextZoom, controls.minDistance, controls.maxDistance);
+      camera.position.copy(controls.target).add(offset.setLength(distance));
+      controls.update();
+      updateZoomControls();
+      return true;
+    }
+    function bindZoomButton(button, increment) {
+      let pointerId = null;
+      let repeatDelay = null;
+      let repeatInterval = null;
+      const stopRepeating = () => {
+        clearTimeout(repeatDelay);
+        clearInterval(repeatInterval);
+        repeatDelay = null;
+        repeatInterval = null;
+        pointerId = null;
+      };
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0 || button.disabled || pointerId !== null) return;
+        event.preventDefault();
+        pointerId = event.pointerId;
+        button.setPointerCapture(pointerId);
+        zoomBy(increment);
+        repeatDelay = window.setTimeout(() => {
+          repeatInterval = window.setInterval(() => {
+            if (button.disabled || !zoomBy(increment)) stopRepeating();
+          }, 70);
+        }, 300);
+      });
+      button.addEventListener("pointerup", (event) => {
+        if (event.pointerId === pointerId) stopRepeating();
+      });
+      button.addEventListener("pointercancel", stopRepeating);
+      button.addEventListener("lostpointercapture", stopRepeating);
+      button.addEventListener("click", (event) => {
+        if (event.detail === 0) zoomBy(increment);
+      });
+      window.addEventListener("blur", stopRepeating);
+    }
+    bindZoomButton(zoomIn, 0.1);
+    bindZoomButton(zoomOut, -0.1);
+    controls.addEventListener("change", () => {
+      updateZoomControls();
+      displayMapLabels();
+      updateDetailedImagery();
+    });
+    let userInteracting = false;
+    let autoRotate = true;
+    controls.addEventListener("start", () => {
+      userInteracting = true;
+      autoRotate = false;
+      rotatingToLocation = false;
+      document.querySelector("#rotation-state").textContent = "MANUAL";
+    });
+    controls.addEventListener("end", () => { userInteracting = false; });
+
+    function resizeRenderer() {
+      const bounds = globeArea.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      renderer.setSize(bounds.width, bounds.height, false);
+      camera.aspect = bounds.width / bounds.height;
+      camera.updateProjectionMatrix();
+    }
+    new ResizeObserver(resizeRenderer).observe(globeArea);
+    resizeRenderer();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const now = performance.now();
+      if (autoRotate && !userInteracting && !activeLocation) earthGroup.rotation.y += 0.0007;
+      marker.scale.setScalar(THREE.MathUtils.clamp(
+        camera.position.distanceTo(controls.target) - 1,
+        0.08,
+        1
+      ));
+      if (rotatingToLocation) {
+        const progress = Math.min((now - rotationStartedAt) / 850, 1);
+        const easedProgress = progress * progress * (3 - 2 * progress);
+        earthGroup.quaternion.copy(rotationFrom).slerp(rotationTo, easedProgress);
+        if (progress === 1) rotatingToLocation = false;
+      }
+      controls.update();
+      updateZoomControls();
+      if (now - lastLabelUpdateAt >= 50) {
+        displayMapLabels();
+        lastLabelUpdateAt = now;
+      }
+      displayMapLabels();
+      renderer.render(scene, camera);
+    }
+    animate();
+    mapLabelsReady = loadMapLabels();
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("visible"), 3600);
+    }
+
+    function beginLookup(button, requestId, loadingText, idleText) {
+      if (activeLookupButton && activeLookupButton !== button) {
+        activeLookupButton.disabled = false;
+        activeLookupButton.textContent = activeLookupIdleText;
+      }
+      activeLookupButton = button;
+      activeLookupRequest = requestId;
+      activeLookupIdleText = idleText;
+      button.disabled = true;
+      button.textContent = loadingText;
+    }
+
+    function finishLookup(button, requestId) {
+      if (activeLookupButton !== button || activeLookupRequest !== requestId) return;
+      button.disabled = false;
+      button.textContent = activeLookupIdleText;
+      activeLookupButton = null;
+    }
+
+    function toRadians(degrees) { return degrees * Math.PI / 180; }
+    function locationVector(lat, lon) {
+      const latitude = toRadians(lat);
+      const longitude = toRadians(lon);
+      return new THREE.Vector3(Math.cos(latitude) * Math.cos(longitude), Math.sin(latitude), -Math.cos(latitude) * Math.sin(longitude));
+    }
+    function formatCoordinate(value, positive, negative) {
+      return `${Math.abs(value).toFixed(3)}° ${value >= 0 ? positive : negative}`;
+    }
+    function setLocation(location) {
+      activeLocation = location;
+      const direction = locationVector(location.lat, location.lon);
+      rotationFrom.copy(earthGroup.quaternion);
+      rotationTo.setFromUnitVectors(direction, new THREE.Vector3(0, 0, 1));
+      rotationStartedAt = performance.now();
+      rotatingToLocation = true;
+      controls.target.set(0, 0, 0);
+      controls.update();
+      marker.position.copy(direction.clone().multiplyScalar(1.022));
+      marker.visible = true;
+      autoRotate = false;
+      document.querySelector("#rotation-state").textContent = "LOCKED";
+      const label = location.name || "Selected location";
+      selectMapLocation(location);
+      const citySearch = Boolean(location.isCity);
+      camera.position.set(0, 0, citySearch ? 2.5 : 3.15);
+      controls.update();
+      updateZoomControls();
+      updateDetailedImagery();
+      document.querySelector("#results-title").innerHTML = `Stories from <span>${escapeHtml(label)}</span>`;
+      document.querySelector("#results-meta").textContent = `${location.lat.toFixed(3)}° / ${location.lon.toFixed(3)}° · LAST 7 DAYS`;
+      document.querySelector("#view-coords").textContent = `${Math.round(location.lat)}° / ${Math.round(location.lon)}°`;
+      document.querySelector("#marker-label").firstChild.textContent = label;
+      document.querySelector("#marker-coords").textContent = `${formatCoordinate(location.lat, "N", "S")} · ${formatCoordinate(location.lon, "E", "W")}`;
+      document.querySelector("#marker-label").classList.add("visible");
+      document.querySelector("#latitude").value = location.lat;
+      document.querySelector("#longitude").value = location.lon;
+      setupFlightTracking(location);
+    }
+
+    function setupFlightTracking(location) {
+      if (flightRefreshTimer) clearInterval(flightRefreshTimer);
+      flightRefreshTimer = null;
+      if (activeFlightController) activeFlightController.abort();
+      activeFlightController = null;
+      flightRequest++;
+      clearFlightLabels();
+      flightTracks.clear();
+      clearFlightTrails();
+
+      flightCenter = { lat: location.lat, lon: location.lon, label: location.locality || location.name };
+      if (location.isCountry) {
+        const countryIso = selectedCountry?.properties?.ADM0_A3;
+        const capital = cityFeatures.find((feature) =>
+          Number(feature.properties?.adm0cap) === 1 &&
+          feature.properties?.adm0_a3 === countryIso &&
+          feature.geometry?.coordinates?.length >= 2
+        );
+        if (!capital) {
+          flightCenter = null;
+          document.querySelector("#flight-description").textContent =
+            `Could not identify the capital of ${location.country || location.name}; live flights aren’t available for this search.`;
+          document.querySelector("#flight-status").textContent = "CAPITAL UNAVAILABLE";
+          document.querySelector("#flight-status").classList.remove("flight-status-live");
+          document.querySelector("#flight-grid").innerHTML =
+            '<div class="flight-empty">Capital coordinates are missing from the place dataset.</div>';
+          return;
+        }
+        const [longitude, latitude] = capital.geometry.coordinates;
+        flightCenter = {
+          lat: Number(latitude),
+          lon: Number(longitude),
+          label: `${capital.properties.name}, ${location.country || location.name}`
+        };
+      }
+
+      document.querySelector("#flight-description").textContent =
+        `Aircraft within 50 miles of ${flightCenter.label} · Updates every 5 minutes; paths build while this page is open.`;
+      document.querySelector("#flight-status").textContent = "CONNECTING";
+      document.querySelector("#flight-status").classList.remove("flight-status-live");
+      document.querySelector("#flight-grid").innerHTML =
+        '<div class="flight-empty">Connecting to the live aircraft feed…</div>';
+      fetchLiveFlights();
+      flightRefreshTimer = window.setInterval(fetchLiveFlights, 300000);
+    }
+
+    function formatFlightAge(seconds) {
+      if (seconds < 5) return "just now";
+      if (seconds < 60) return `${Math.round(seconds)}s ago`;
+      return `${Math.floor(seconds / 60)}m ago`;
+    }
+
+    async function fetchLiveFlights() {
+      if (!flightCenter) return;
+      const requestId = ++flightRequest;
+      if (activeFlightController) activeFlightController.abort();
+      const controller = new AbortController();
+      activeFlightController = controller;
+      document.querySelector("#flight-status").textContent = "REFRESHING";
+      try {
+        const params = new URLSearchParams({
+          lat: String(flightCenter.lat),
+          lon: String(flightCenter.lon)
+        });
+        const response = await fetch(`/api/flights?${params}`, { signal: controller.signal });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || `Flight feed returned ${response.status}`);
+        }
+        const data = await response.json();
+        if (requestId !== flightRequest) return;
+        if (!Array.isArray(data.ac) || !Number.isFinite(Number(data.now))) {
+          throw new Error("The aircraft feed returned invalid data.");
+        }
+        const cutoff = 2 * 60;
+        const radiusKm = 50 * 1.609344;
+        const aircraft = data.ac
+          .filter((plane) =>
+            Number.isFinite(plane.lat) &&
+            Number.isFinite(plane.lon) &&
+            Number.isFinite(plane.seen_pos) &&
+            plane.seen_pos >= 0 &&
+            plane.seen_pos <= cutoff
+          )
+          .map((plane) => ({
+            ...plane,
+            distanceKm: distanceBetweenLocationsKm(
+              flightCenter.lat,
+              flightCenter.lon,
+              plane.lat,
+              plane.lon
+            )
+          }))
+          .filter((plane) => plane.distanceKm <= radiusKm)
+          .sort((a, b) => a.distanceKm - b.distanceKm);
+        recordFlightPositions(aircraft);
+        renderLiveFlights(aircraft);
+        document.querySelector("#flight-status").textContent =
+          `LIVE · ${new Date(Number(data.now)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+        document.querySelector("#flight-status").classList.add("flight-status-live");
+      } catch (error) {
+        if (requestId !== flightRequest || error.name === "AbortError") return;
+        clearFlightLabels();
+        document.querySelector("#flight-status").textContent =
+          error.message.includes("429") ? "RATE LIMITED" : "FEED UNAVAILABLE";
+        document.querySelector("#flight-status").classList.remove("flight-status-live");
+        document.querySelector("#flight-grid").innerHTML =
+          `<div class="flight-empty">${escapeHtml(error.message || "The live aircraft feed is temporarily unavailable.")} It will retry automatically.</div>`;
+        console.error("The nearby live aircraft feed could not be loaded.", error);
+      } finally {
+        if (requestId === flightRequest) activeFlightController = null;
+      }
+    }
+
+    function renderLiveFlights(aircraft) {
+      const grid = document.querySelector("#flight-grid");
+      clearFlightLabels();
+      if (!aircraft.length) {
+        grid.innerHTML = '<div class="flight-empty">No aircraft with a recent position were reported within 50 miles.</div>';
+        displayMapLabels();
+        return;
+      }
+      const nearbyAircraft = aircraft.slice(0, 12);
+      const markerPositions = [];
+      selectedFlightLabels = nearbyAircraft.map((plane) => {
+        const callsign = String(plane.flight || "").trim() || String(plane.hex || "Aircraft");
+        const label = createMapLabel(callsign, plane.lat, plane.lon, "flight", plane.distanceKm);
+        const heading = Number(plane.track);
+        const hasHeading = plane.track != null && Number.isFinite(heading) && heading >= 0 && heading < 360;
+        label.element.title = `${callsign} · ${plane.t || "Aircraft"} · position ${formatFlightAge(plane.seen_pos)}${hasHeading ? ` · heading ${Math.round(heading)}° ${compassDirection(heading)}` : " · heading unavailable"}`;
+        if (hasHeading) {
+          const arrow = document.createElement("span");
+          arrow.className = "map-label-flight-arrow";
+          arrow.textContent = "➤";
+          arrow.setAttribute("aria-hidden", "true");
+          label.element.replaceChildren(arrow, document.createTextNode(callsign));
+          label.heading = heading;
+          label.latitude = plane.lat;
+          label.longitude = plane.lon;
+        }
+        markerPositions.push(...locationVector(plane.lat, plane.lon).multiplyScalar(1.012).toArray());
+        return label;
+      });
+      const markerGeometry = new THREE.BufferGeometry();
+      markerGeometry.setAttribute("position", new THREE.Float32BufferAttribute(markerPositions, 3));
+      flightMarkerGroup.add(new THREE.Points(markerGeometry, flightMarkerMaterial));
+      mapLabels.push(...selectedFlightLabels);
+      grid.innerHTML = nearbyAircraft.map((plane) => {
+        const callsign = String(plane.flight || "").trim() || String(plane.hex || "Unknown aircraft");
+        const aircraftType = String(plane.t || "Aircraft type unavailable");
+        const altitude = plane.alt_baro === "ground"
+          ? "On ground"
+          : Number.isFinite(plane.alt_baro)
+            ? `${Math.round(Number(plane.alt_baro)).toLocaleString()} ft`
+            : "Altitude unavailable";
+        const speed = Number.isFinite(plane.gs) ? `${Math.round(plane.gs)} kt` : "Speed unavailable";
+        const distanceMiles = `${(plane.distanceKm / 1.609344).toFixed(1)} mi`;
+        const heading = Number(plane.track);
+        const direction = plane.track != null && Number.isFinite(heading) && heading >= 0 && heading < 360
+          ? `Heading ${compassDirection(heading)} · ${Math.round(heading)}°`
+          : "Heading unavailable";
+        return `<article class="flight-card">
+          <div class="flight-ident" title="${escapeHtml(callsign)}">${escapeHtml(callsign)}</div>
+          <div class="flight-type">${escapeHtml(aircraftType)}</div>
+          <div class="flight-details">
+            <span>${altitude}</span><span>${speed}</span><span>${escapeHtml(direction)}</span><span>${distanceMiles} away</span>
+            <span>Position ${formatFlightAge(Number(plane.seen_pos))}</span>
+          </div>
+        </article>`;
+      }).join("");
+      displayMapLabels();
+    }
+
+    function clearFlightLabels() {
+      for (const marker of flightMarkerGroup.children) marker.geometry.dispose();
+      flightMarkerGroup.clear();
+      for (const label of selectedFlightLabels) {
+        label.element.remove();
+        const index = mapLabels.indexOf(label);
+        if (index >= 0) mapLabels.splice(index, 1);
+      }
+      selectedFlightLabels = [];
+      displayMapLabels();
+    }
+
+    function compassDirection(degrees) {
+      return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][
+        Math.round(degrees / 45) % 8
+      ];
+    }
+
+    function flightHeadingEndpoint(latitude, longitude, bearing) {
+      const angularDistance = 0.005;
+      const latitude1 = toRadians(latitude);
+      const longitude1 = toRadians(longitude);
+      const bearingRadians = toRadians(bearing);
+      const latitude2 = Math.asin(
+        Math.sin(latitude1) * Math.cos(angularDistance) +
+        Math.cos(latitude1) * Math.sin(angularDistance) * Math.cos(bearingRadians)
+      );
+      const longitude2 = longitude1 + Math.atan2(
+        Math.sin(bearingRadians) * Math.sin(angularDistance) * Math.cos(latitude1),
+        Math.cos(angularDistance) - Math.sin(latitude1) * Math.sin(latitude2)
+      );
+      return locationVector(latitude2 * 180 / Math.PI, longitude2 * 180 / Math.PI);
+    }
+
+    function recordFlightPositions(aircraft) {
+      const now = Date.now();
+      for (const plane of aircraft.slice(0, maxTrackedFlights)) {
+        const hex = String(plane.hex || "").toLowerCase();
+        if (!/^[0-9a-f]{6}$/.test(hex)) continue;
+        const track = flightTracks.get(hex) || { points: [], lastSeen: now };
+        const previous = track.points[track.points.length - 1];
+        if (!previous || now - previous.time >= 60_000) {
+          track.points.push({ lat: plane.lat, lon: plane.lon, time: now });
+        } else {
+          track.points[track.points.length - 1] = { lat: plane.lat, lon: plane.lon, time: now };
+        }
+        track.points = track.points.filter((point) => now - point.time <= trackRetentionMs).slice(-maxTrackPoints);
+        track.lastSeen = now;
+        flightTracks.set(hex, track);
+      }
+      for (const [hex, track] of flightTracks) {
+        if (now - track.lastSeen > trackRetentionMs) flightTracks.delete(hex);
+      }
+      if (flightTracks.size > maxTrackedFlights) {
+        const oldest = [...flightTracks.entries()]
+          .sort((a, b) => a[1].lastSeen - b[1].lastSeen)
+          .slice(0, flightTracks.size - maxTrackedFlights);
+        for (const [hex] of oldest) flightTracks.delete(hex);
+      }
+      drawFlightTrails();
+    }
+
+    function drawFlightTrails() {
+      clearFlightTrails();
+      if (!flightCenter) return;
+      const center = locationVector(flightCenter.lat, flightCenter.lon).normalize();
+      const radiusAngle = (50 * 1.609344) / 6371;
+      const positions = [];
+      for (const track of flightTracks.values()) {
+        for (let index = 1; index < track.points.length; index++) {
+          const previous = track.points[index - 1];
+          const current = track.points[index];
+          if (current.time - previous.time > 10 * 60 * 1000) continue;
+          const start = locationVector(previous.lat, previous.lon).normalize();
+          const end = locationVector(current.lat, current.lon).normalize();
+          const angle = start.angleTo(end);
+          const steps = Math.max(1, Math.ceil(angle / 0.0005));
+          for (let step = 0; step < steps; step++) {
+            const from = start.clone().slerp(end, step / steps);
+            const to = start.clone().slerp(end, (step + 1) / steps);
+            if (from.angleTo(center) > radiusAngle || to.angleTo(center) > radiusAngle) continue;
+            positions.push(
+              ...from.multiplyScalar(1.006).toArray(),
+              ...to.multiplyScalar(1.006).toArray()
+            );
+          }
+        }
+      }
+      if (!positions.length) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const trails = new THREE.LineSegments(geometry, flightTrailMaterial);
+      trails.renderOrder = 2;
+      flightTrailGroup.add(trails);
+    }
+
+    function clearFlightTrails() {
+      for (const trail of flightTrailGroup.children) {
+        trail.geometry.dispose();
+      }
+      flightTrailGroup.clear();
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+    }
+    function showLoading() {
+      newsGrid.innerHTML = Array.from({ length: 6 }, () => `<div class="news-card placeholder"><div class="article-top"><span class="source"></span></div><div class="article-title"></div><div class="article-bottom"><span></span></div></div>`).join("");
+    }
+    function renderEmpty(title, detail, location, canRetry = false) {
+      const terms = locationSearchTerms(location).join(" ");
+      const newsUrl = terms ? `https://news.google.com/search?q=${encodeURIComponent(`"${terms}"`)}` : "";
+      const newsLink = newsUrl ? `<a href="${escapeHtml(newsUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none">Search Google News for this place ↗</a>` : "";
+      const retryButton = canRetry ? `<button type="button" class="coord-button" id="retry-news" style="margin-top:12px">Try again</button>` : "";
+      newsGrid.innerHTML = `<div class="empty-state"><div><strong>${escapeHtml(title)}</strong>${escapeHtml(detail)}${newsLink ? `<br /><br />${newsLink}` : ""}${retryButton}</div></div>`;
+      if (canRetry) document.querySelector("#retry-news").addEventListener("click", () => fetchNews(location));
+    }
+    function parseArticleDate(dateString) {
+      const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(dateString || "");
+      const date = match
+        ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6])))
+        : new Date(dateString);
+      if (Number.isNaN(date.getTime())) return null;
+      if (match && (date.getUTCFullYear() !== Number(match[1]) ||
+        date.getUTCMonth() !== Number(match[2]) - 1 || date.getUTCDate() !== Number(match[3]))) return null;
+      return date;
+    }
+    function locationSearchTerms(location) {
+      return [...new Set([location.locality, location.country].filter(Boolean))];
+    }
+    function renderArticles(articles, location, provider) {
+      const now = Date.now();
+      const seenUrls = new Set();
+      const validArticles = (Array.isArray(articles) ? articles : []).filter((article) => {
+        if (typeof article.title !== "string" || !article.title.trim() || typeof article.url !== "string") return false;
+        let articleUrl;
+        try { articleUrl = new URL(article.url); }
+        catch { return false; }
+        if (articleUrl.protocol !== "http:" && articleUrl.protocol !== "https:") return false;
+        articleUrl.hash = "";
+        if (seenUrls.has(articleUrl.href)) return false;
+        const publishedAt = parseArticleDate(article.publishedAt || article.seendate);
+        const isRecent = publishedAt && publishedAt.getTime() <= now &&
+          now - publishedAt.getTime() <= 7 * 24 * 60 * 60 * 1000;
+        if (isRecent) seenUrls.add(articleUrl.href);
+        return isRecent;
+      });
+      if (!validArticles.length) {
+        const scope = location.country ? `${location.locality} and ${location.country}` : location.locality;
+        renderEmpty("No recent place matches found.", `No articles mentioning ${scope} were found in the last seven days.`, location);
+        return;
+      }
+      newsGrid.innerHTML = validArticles.slice(0, 9).map((article) => {
+        const title = escapeHtml(article.title);
+        const source = escapeHtml(article.domain || article.source || "WORLD NEWS");
+        const publishedAt = parseArticleDate(article.publishedAt || article.seendate);
+        const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(publishedAt);
+        return `<a class="news-card" href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer"><div class="article-top"><span class="source">${source}</span><span class="article-date" title="Publication date, UTC">${date} UTC</span></div><h3 class="article-title">${title}</h3><div class="article-bottom"><span>${escapeHtml(provider)} · place matched</span><span class="read-link">Read story ↗</span></div></a>`;
+      }).join("");
+    }
+
+    async function fetchNews(location) {
+      const requestId = ++newsRequest;
+      if (activeNewsController) activeNewsController.abort();
+      const terms = locationSearchTerms(location);
+      if (!terms.length) {
+        activeNewsController = null;
+        document.querySelector("#results-meta").textContent = "NO NAMED PLACE FOUND";
+        renderEmpty("No named place found at these coordinates.", "Try coordinates on land or search for a nearby city to find place-matched coverage.", location);
+        return;
+      }
+      const controller = new AbortController();
+      activeNewsController = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      showLoading();
+      document.querySelector("#results-meta").textContent = `MATCHING ${terms.map((term) => `"${term}"`).join(" + ")} · LAST 7 DAYS`;
+      const query = terms.map((term) => `"${term}"`).join(" ");
+      const url = `/api/news?q=${encodeURIComponent(`${query} when:7d`)}`;
+      try {
+        if (requestId !== newsRequest) return;
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || `News service returned ${response.status}`);
+        }
+        const data = await response.json();
+        if (!Array.isArray(data.articles) || typeof data.provider !== "string") throw new Error("News service returned an invalid article list");
+        if (requestId !== newsRequest) return;
+        renderArticles(data.articles, location, data.provider);
+      } catch (error) {
+        if (requestId !== newsRequest) return;
+        const detail = error.name === "AbortError"
+          ? `The regional news feed took too long to respond for ${location.name}.`
+          : `We couldn't retrieve headlines for ${location.name}. ${error.message || "Please try again in a moment."}`;
+        renderEmpty("The news desk is temporarily offline.", detail, location, true);
+      } finally {
+        clearTimeout(timeoutId);
+        if (requestId === newsRequest) activeNewsController = null;
+      }
+    }
+
+    async function reverseGeocode(lat, lon) {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&accept-language=en`;
+      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(`Place lookup returned ${response.status}`);
+      const data = await response.json();
+      const address = data.address || {};
+      const locality = address.city || address.town || address.village || address.municipality || address.county || address.state || address.country || data.name || "";
+      const country = address.country || "";
+      const name = locality
+        ? (country && !locality.toLowerCase().includes(country.toLowerCase()) ? `${locality}, ${country}` : locality)
+        : `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+      return {
+        name, locality, country, countryCode: address.country_code || "", lat, lon,
+        isCity: Boolean(address.city || address.town || address.village || address.municipality)
+      };
+    }
+
+    async function searchPlace(query) {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1&addressdetails=1&accept-language=en`;
+      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(`Place lookup returned ${response.status}`);
+      const results = await response.json();
+      if (!results.length) throw new Error("We couldn't find that place. Try a city or a more specific name.");
+      const result = results[0];
+      const address = result.address || {};
+      const isCountry = result.addresstype === "country";
+      const locality = isCountry
+        ? result.name || result.display_name
+        : address.city || address.town || address.village || address.municipality || result.name || result.display_name.split(",")[0].trim();
+      const country = address.country || (isCountry ? locality : "");
+      if (isCountry) await mapLabelsReady;
+      return {
+        name: isCountry
+          ? locality
+          : country ? `${locality}, ${country}` : result.display_name.split(",").slice(0, 2).join(",").trim(),
+        locality, country, countryCode: address.country_code || "", lat: Number(result.lat), lon: Number(result.lon),
+        isCountry,
+        isCity: Boolean(address.city || address.town || address.village || address.municipality ||
+          ["city", "town", "village", "municipality"].includes(result.addresstype))
+      };
+    }
+
+    async function explore(location) {
+      setLocation(location);
+      await fetchNews(location);
+    }
+
+    document.querySelector("#location-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const query = placeInput.value.trim();
+      if (!query) { showToast("Enter a city or place to explore."); placeInput.focus(); return; }
+      const coordinateMatch = query.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (coordinateMatch) {
+        const lat = Number(coordinateMatch[1]);
+        const lon = Number(coordinateMatch[2]);
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) { showToast("Coordinates must be within ±90° latitude and ±180° longitude."); return; }
+        await handleCoordinates(lat, lon);
+        return;
+      }
+      const requestId = ++lookupRequest;
+      beginLookup(searchButton, requestId, "Finding…", "Explore");
+      try {
+        const location = await searchPlace(query);
+        if (requestId !== lookupRequest) return;
+        await explore(location);
+      } catch (error) {
+        if (requestId === lookupRequest) showToast(error.message || "Couldn’t look up that place. Please try again.");
+      }
+      finally {
+        finishLookup(searchButton, requestId);
+      }
+    });
+
+    async function handleCoordinates(lat, lon) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        showToast("Enter valid coordinates: latitude ±90°, longitude ±180°.");
+        return;
+      }
+      const requestId = ++lookupRequest;
+      const button = document.querySelector("#coords-button");
+      beginLookup(button, requestId, "Locating…", "Go to");
+      try {
+        const location = await reverseGeocode(lat, lon);
+        if (requestId !== lookupRequest) return;
+        await explore(location);
+      } catch (error) {
+        if (requestId !== lookupRequest) return;
+        if (error instanceof TypeError) showToast("Place lookup is unavailable. Check your connection and try again.");
+        else showToast(error.message || "Couldn’t identify that location. Please try again.");
+      } finally {
+        finishLookup(button, requestId);
+      }
+    }
+
+    document.querySelector("#coords-button").addEventListener("click", () => {
+      const latitude = document.querySelector("#latitude").value.trim();
+      const longitude = document.querySelector("#longitude").value.trim();
+      if (!latitude || !longitude) {
+        showToast("Enter both latitude and longitude.");
+        document.querySelector(!latitude ? "#latitude" : "#longitude").focus();
+        return;
+      }
+      handleCoordinates(Number(latitude), Number(longitude));
+    });
+    [document.querySelector("#latitude"), document.querySelector("#longitude")].forEach((input) => {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          document.querySelector("#coords-button").click();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
