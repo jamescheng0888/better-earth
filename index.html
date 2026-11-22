@@ -1390,6 +1390,27 @@
       return "#68d391";
     }
 
+    async function requestEarthquakeFeed(location, signal) {
+      const params = new URLSearchParams({
+        lat: String(location.lat),
+        lon: String(location.lon)
+      });
+      const response = await fetch(`/api/earthquakes?${params}`, { signal });
+      if (response.status !== 404) return response;
+
+      const startTime = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const usgsParams = new URLSearchParams({
+        format: "geojson",
+        latitude: String(location.lat),
+        longitude: String(location.lon),
+        maxradiuskm: String(50 * 1.609344),
+        starttime: startTime,
+        orderby: "magnitude",
+        limit: "500"
+      });
+      return fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?${usgsParams}`, { signal });
+    }
+
     async function fetchNearbyEarthquakes(location) {
       const requestId = ++earthquakeRequest;
       if (activeEarthquakeController) activeEarthquakeController.abort();
@@ -1397,14 +1418,10 @@
       activeEarthquakeController = controller;
       document.querySelector("#earthquakes-status").textContent = "UPDATING";
       try {
-        const params = new URLSearchParams({
-          lat: String(location.lat),
-          lon: String(location.lon)
-        });
-        const response = await fetch(`/api/earthquakes?${params}`, { signal: controller.signal });
+        const response = await requestEarthquakeFeed(location, controller.signal);
         if (!response.ok) {
           const error = await response.json().catch(() => ({}));
-          throw new Error(error.error || `Earthquake feed returned ${response.status}`);
+          throw new Error(error.error || `USGS earthquake feed returned ${response.status}`);
         }
         const data = await response.json();
         if (requestId !== earthquakeRequest) return;

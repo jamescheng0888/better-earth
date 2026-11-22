@@ -107,6 +107,10 @@ public class OrbitServer {
                 serveFlights(exchange);
                 return;
             }
+            if (path.equals("/api/earthquakes")) {
+                serveEarthquakes(exchange);
+                return;
+            }
             if (path.equals("/api/wildfires")) {
                 serveWildfires(exchange);
                 return;
@@ -201,6 +205,65 @@ public class OrbitServer {
         }
         FLIGHT_CACHE.put(cacheKey, new CachedFlightFeed(Instant.now(), data));
         send(exchange, 200, "application/json; charset=utf-8", data);
+    }
+
+    private static void serveEarthquakes(HttpExchange exchange) throws IOException {
+        if (!exchange.getRequestMethod().equals("GET")) {
+            send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"Use GET.\"}");
+            return;
+        }
+        String rawQuery = exchange.getRequestURI().getRawQuery();
+        double latitude;
+        double longitude;
+        try {
+            latitude = Double.parseDouble(queryParameter(rawQuery, "lat"));
+            longitude = Double.parseDouble(queryParameter(rawQuery, "lon"));
+        } catch (NumberFormatException | NullPointerException error) {
+            send(exchange, 400, "application/json; charset=utf-8",
+                "{\"error\":\"Valid latitude and longitude are required.\"}");
+            return;
+        }
+        if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            !Double.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            send(exchange, 400, "application/json; charset=utf-8",
+                "{\"error\":\"Coordinates must be within ±90° latitude and ±180° longitude.\"}");
+            return;
+        }
+
+        String startTime = URLEncoder.encode(Instant.now().minus(Duration.ofHours(48)).toString(), StandardCharsets.UTF_8);
+        String url = String.format(java.util.Locale.ROOT,
+            "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=%.6f&longitude=%.6f&maxradiuskm=80.4672&starttime=%s&orderby=magnitude&limit=500",
+            latitude, longitude, startTime);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(20))
+            .header("User-Agent", "BetterEarthEarthquakeMap/1.0")
+            .GET()
+            .build();
+        HttpResponse<String> response;
+        try {
+            response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (IOException error) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The USGS earthquake feed could not be reached.\"}");
+            return;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"The USGS earthquake request was interrupted.\"}");
+            return;
+        }
+        if (response.statusCode() != 200) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"USGS returned HTTP " + response.statusCode() + " for the earthquake search.\"}");
+            return;
+        }
+        String data = response.body();
+        if (!data.startsWith("{") || !data.contains("\"features\"")) {
+            send(exchange, 502, "application/json; charset=utf-8",
+                "{\"error\":\"USGS returned invalid earthquake data.\"}");
+            return;
+        }
+        send(exchange, 200, "application/geo+json; charset=utf-8", data);
     }
 
     private static void serveWildfires(HttpExchange exchange) throws IOException {
