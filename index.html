@@ -452,7 +452,7 @@
           <aside class="country-fact" id="country-fact" aria-live="polite" hidden>
             <p class="country-fact-label" id="country-fact-label">A little local color</p>
             <p class="country-fact-text" id="country-fact-text"></p>
-            <a class="country-fact-source" id="country-fact-source" target="_blank" rel="noopener noreferrer" hidden>Explore the source ↗</a>
+            <a class="country-fact-source" id="country-fact-source" target="_blank" rel="noopener noreferrer" hidden>Source: Wikipedia ↗</a>
           </aside>
           <section class="wildfire-panel" aria-labelledby="wildfire-panel-title">
             <div class="wildfire-panel-head">
@@ -1519,7 +1519,7 @@
               : "GDACS";
             const dateRange = [storm.startedAt, storm.endedAt]
               .filter(Number.isFinite)
-              .map((time) => new Date(time).toLocaleDateString([], { timeZone: "UTC", dateStyle: "medium" }))
+              .map((time) => formatCentralTime(time, { dateStyle: "medium" }))
               .join(" – ");
             const alertColor = storm.alert.toLowerCase() === "red" ? "#ff7078"
               : storm.alert.toLowerCase() === "orange" ? "#ffad62" : "#8bc7df";
@@ -1529,7 +1529,7 @@
                 <span>${storm.current ? "CURRENT" : "RECENT"}</span>
                 <span>${escapeHtml(storm.alert)} alert</span>
                 <span>${escapeHtml(storm.country)}</span>
-                ${dateRange ? `<span>${escapeHtml(dateRange)} UTC</span>` : ""}
+                ${dateRange ? `<span>${escapeHtml(dateRange)}</span>` : ""}
                 <span>${report}</span>
               </div>
             </article>`;
@@ -1599,16 +1599,14 @@
           grid.innerHTML = '<div class="storm-empty">NOAA returned no tornado reports from the latest report periods within the past 48 hours. This is U.S.-only preliminary reporting, not confirmation that no tornadoes occurred elsewhere.</div>';
         } else {
           grid.innerHTML = tornadoes.slice(0, 30).map((tornado) => {
-            const reportedAt = new Date(tornado.time).toLocaleString([], {
-              timeZone: "UTC", dateStyle: "medium", timeStyle: "short"
-            });
+            const reportedAt = formatCentralTime(tornado.time);
             const place = [tornado.location, tornado.county && `${tornado.county} County`, tornado.state]
               .filter(Boolean).join(", ");
             return `<article class="storm-card">
               <h3 class="storm-card-title">${escapeHtml(place)}</h3>
               <div class="storm-card-details">
                 <span>${escapeHtml(tornado.scale || "Scale not rated")}</span>
-                <span>${escapeHtml(reportedAt)} UTC</span>
+                <span>${escapeHtml(reportedAt)}</span>
                 <span>${tornado.latitude.toFixed(3)}, ${tornado.longitude.toFixed(3)}</span>
                 <span><a href="${escapeHtml(data.sourceUrl)}" target="_blank" rel="noopener noreferrer">NOAA SPC source ↗</a></span>
                 ${tornado.comments ? `<span>${escapeHtml(tornado.comments)}</span>` : ""}
@@ -1657,7 +1655,7 @@
           ? tornado.scale.toUpperCase()
           : "T";
         const label = createMapLabel(labelText, tornado.latitude, tornado.longitude, "tornado", tornado.time);
-        label.element.title = `${tornado.location}${tornado.county ? `, ${tornado.county} County` : ""}, ${tornado.state} · ${new Date(tornado.time).toISOString()}`;
+        label.element.title = `${tornado.location}${tornado.county ? `, ${tornado.county} County` : ""}, ${tornado.state} · ${formatCentralTime(tornado.time)}`;
         return label;
       });
       mapLabels.push(...selectedTornadoLabels);
@@ -1904,9 +1902,7 @@
           : escapeHtml(earthquake.title);
         const depth = earthquake.depthKm == null ? "Depth unavailable" : `Depth ${earthquake.depthKm.toFixed(1)} km`;
         const mmi = earthquake.mmi == null ? "" : `<span>Est. shaking MMI ${earthquake.mmi.toFixed(1)}</span>`;
-        const reportedAt = new Date(earthquake.time).toLocaleString([], {
-          timeZone: "UTC", dateStyle: "medium", timeStyle: "short"
-        });
+        const reportedAt = formatCentralTime(earthquake.time);
         return `<article class="earthquake-card" style="--quake-color:${color}">
           <h3 class="earthquake-card-title"><span style="color:${color}">M${earthquake.magnitude.toFixed(1)}</span> · ${place}</h3>
           <div class="earthquake-card-details">
@@ -1914,7 +1910,7 @@
             <span>${escapeHtml(earthquake.magnitudeType || "Magnitude")}</span>
             <span>${depth}</span>
             ${mmi}
-            <span>${escapeHtml(reportedAt)} UTC</span>
+            <span>${escapeHtml(reportedAt)}</span>
           </div>
         </article>`;
       }).join("");
@@ -1992,13 +1988,13 @@
           weatherSource: data.weatherSource || "global weather feed",
           airQualitySource: data.airQualitySource || "unavailable"
         });
-        const reportTime = typeof weather.time === "string" ? weather.time : "";
+        const reportTime = typeof weather.time === "string" ? formatCentralTime(weather.time) : "";
         const status = document.querySelector("#conditions-status");
         status.textContent = data.stale
-          ? `CACHED DATA · ${reportTime.replace("T", " ")} UTC`
+          ? `CACHED DATA · ${reportTime}`
           : aqi == null
-            ? `PARTIAL DATA · ${reportTime.replace("T", " ")} UTC`
-            : `UPDATED ${reportTime.replace("T", " ")} UTC`;
+            ? `PARTIAL DATA · ${reportTime}`
+            : `UPDATED ${reportTime}`;
         status.classList.toggle("conditions-status-live", !data.stale && aqi != null);
         document.querySelector("#conditions-description").textContent =
           `${data.stale ? "Most recently cached" : "Current"} conditions near ${location.locality || location.name || "this location"}.`;
@@ -2140,10 +2136,10 @@
         document.querySelector("#wildfire-status").classList.toggle("wildfire-status-live", fires.length > 0);
         document.querySelector("#wildfire-description").textContent =
           isFirms
-            ? `Top ${fires.length} high-activity satellite detection clusters worldwide from the past 48 hours (UTC).`
-            : `Top ${fires.length} reported burnt-area observations worldwide from the past 48 hours (UTC).`;
+            ? `Top ${fires.length} high-activity satellite detection clusters worldwide from the past 48 hours.`
+            : `Top ${fires.length} reported burnt-area observations worldwide from the past 48 hours.`;
         document.querySelector("#wildfire-source-note").textContent = isFirms
-          ? "NASA FIRMS VIIRS satellite heat detections from the past 48 hours (UTC). Clusters rank by summed fire radiative power, not burned area; detections are estimates and may include other heat sources."
+          ? "NASA FIRMS VIIRS satellite heat detections from the past 48 hours. Report times are shown in Central Time. Clusters rank by summed fire radiative power, not burned area; detections are estimates and may include other heat sources."
           : "Copernicus GWIS near-real-time burnt-area reports, filtered to 48 hours and ranked by estimated area (ha). Map points are report locations, not fire perimeters; coverage and reporting times can vary.";
       } catch (error) {
         if (requestId !== wildfireRequest || error.name === "AbortError") return;
@@ -2228,9 +2224,7 @@
           ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${fire.detectionCount ? "NASA FIRMS map" : "Copernicus GWIS source"} ↗</a>`
           : fire.detectionCount ? "NASA FIRMS" : "Copernicus GWIS";
         const reportedAt = new Date(fire.lastDetected);
-        const reportDate = new Intl.DateTimeFormat(undefined, {
-          dateStyle: "medium", timeStyle: "short", timeZone: "UTC"
-        }).format(reportedAt);
+        const reportDate = formatCentralTime(reportedAt);
         const latitude = Math.abs(fire.latitude).toFixed(2) + (fire.latitude < 0 ? "°S" : "°N");
         const longitude = Math.abs(fire.longitude).toFixed(2) + (fire.longitude < 0 ? "°W" : "°E");
         return `<article class="wildfire-card">
@@ -2244,7 +2238,7 @@
                 ? `<span>Reported area ${fire.sizeValue.toLocaleString()} ${escapeHtml(fire.sizeUnit)}</span>`
                 : '<span>Burned area not reported</span>'}
             <span>${latitude}, ${longitude}</span>
-            <span>${fire.detectionCount ? "Last detected" : "Last reported"} ${escapeHtml(reportDate)} UTC</span>
+            <span>${fire.detectionCount ? "Last detected" : "Last reported"} ${escapeHtml(reportDate)}</span>
             <span>${sourceLink}</span>
           </div>
         </article>`;
@@ -2328,7 +2322,7 @@
         recordFlightPositions(aircraft);
         renderLiveFlights(aircraft);
         document.querySelector("#flight-status").textContent =
-          `LIVE · ${data.provider} · ${new Date(Number(data.now)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+          `LIVE · ${data.provider} · ${formatCentralTime(Number(data.now), { hour: "numeric", minute: "2-digit" })}`;
         document.querySelector("#flight-status").classList.add("flight-status-live");
       } catch (error) {
         if (requestId !== flightRequest || error.name === "AbortError") return;
@@ -2510,6 +2504,19 @@
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
     }
+    function formatCentralTime(value, options = {}) {
+      const input = value instanceof Date || typeof value === "number" ? value : String(value);
+      const normalized = typeof input === "string" && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(input)
+        ? `${input}Z`
+        : input;
+      const date = normalized instanceof Date ? normalized : new Date(normalized);
+      const timeZone = "America/Chicago";
+      const formatted = new Intl.DateTimeFormat(undefined, { timeZone, ...options }).format(date);
+      const abbreviation = new Intl.DateTimeFormat(undefined, {
+        timeZone, timeZoneName: "short"
+      }).formatToParts(date).find((part) => part.type === "timeZoneName")?.value;
+      return abbreviation ? `${formatted} ${abbreviation}` : formatted;
+    }
     function showLoading() {
       newsGrid.innerHTML = Array.from({ length: 6 }, () => `<div class="news-card placeholder"><div class="article-top"><span class="source"></span></div><div class="article-title"></div><div class="article-bottom"><span></span></div></div>`).join("");
     }
@@ -2560,8 +2567,8 @@
         const title = escapeHtml(article.title);
         const source = escapeHtml(article.domain || article.source || "WORLD NEWS");
         const publishedAt = parseArticleDate(article.publishedAt || article.seendate);
-        const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(publishedAt);
-        return `<a class="news-card" href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer"><div class="article-top"><span class="source">${source}</span><span class="article-date" title="Publication date, UTC">${date} UTC</span></div><h3 class="article-title">${title}</h3><div class="article-bottom"><span>${escapeHtml(provider)} · place matched</span><span class="read-link">Read story ↗</span></div></a>`;
+        const date = formatCentralTime(publishedAt, { dateStyle: "medium" });
+        return `<a class="news-card" href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer"><div class="article-top"><span class="source">${source}</span><span class="article-date" title="Publication date in Central Time">${date}</span></div><h3 class="article-title">${title}</h3><div class="article-bottom"><span>${escapeHtml(provider)} · place matched</span><span class="read-link">Read story ↗</span></div></a>`;
       }).join("");
     }
 
@@ -2635,11 +2642,13 @@
         if (!extract || typeof pageUrl !== "string" || !pageUrl.startsWith("https://en.wikipedia.org/")) {
           throw new Error("No country summary was available.");
         }
-        const sentences = extract.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()) || [extract];
+        const sentences = typeof Intl.Segmenter === "function"
+          ? [...new Intl.Segmenter("en", { granularity: "sentence" }).segment(extract)].map(({ segment }) => segment.trim())
+          : extract.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()) || [extract];
         const candidates = sentences.slice(1);
-        const livelyDetails = /\b(?:famous|known for|home to|birthplace|invented|originated|festival|tradition|cuisine|dish|food|music|dance|art|craft|legend|myth|island|volcano|waterfall|forest|reef|wildlife|animal|unusual|record-breaking|world's largest|world's oldest|world's only)\b/i;
+        const livelyDetails = /\b(?:famous|known for|home to|birthplace|invented|originated|festival|tradition|cuisine|dish|food|music|dance|art|craft|legend|myth|island|volcano|waterfall|forest|reef|wildlife|animal|unusual|record-breaking|world's largest|world's oldest|world's only|largest in the world|oldest in the world|unique|distinctive|renowned|celebrated|famed|spectacular|giant|ancient|largest|oldest|tallest|longest)\b/i;
         const dryDetails = /\b(?:population|administrative|government|political|bordered by|divided into|capital is|covers an area|square kilometres|square kilometers)\b/i;
-        const fact = candidates
+        const rankedFacts = candidates
           .map((sentence, index) => ({
             sentence,
             score: (livelyDetails.test(sentence) ? 3 : 0) -
@@ -2647,8 +2656,13 @@
               (/\b\d[\d,.]*\s*(?:million|billion|percent|%)\b/i.test(sentence) ? 2 : 0) -
               index * 0.1
           }))
-          .sort((a, b) => b.score - a.score)[0]?.sentence || sentences[0];
-        factText.textContent = `Here’s one neat thing to know: ${fact}`;
+          .sort((a, b) => b.score - a.score);
+        const fact = rankedFacts[0]?.score > 0 ? rankedFacts[0].sentence : "";
+        if (!fact) {
+          factText.textContent = `I couldn't find a sufficiently interesting, sourced detail about ${country} right now.`;
+          return;
+        }
+        factText.textContent = fact;
         sourceLink.href = pageUrl;
         sourceLink.hidden = false;
       } catch (error) {
