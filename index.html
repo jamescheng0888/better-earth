@@ -246,9 +246,9 @@
       border-radius: 9px; background: linear-gradient(110deg, rgba(196,240,107,.07), rgba(12,17,24,.55));
     }
     .country-fact[hidden] { display: none; }
-    .country-fact-label { margin: 0 0 5px; color: var(--accent); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-    .country-fact-text { margin: 0; color: #d3dce5; font: 12px/1.6 var(--sans); }
-    .country-fact-source { display: inline-block; margin-top: 6px; color: #8995a2; font: 9px var(--mono); text-decoration: none; }
+    .country-fact-label { margin: 0 0 6px; color: var(--accent); font: 600 12px var(--display); letter-spacing: -.01em; }
+    .country-fact-text { margin: 0; color: #d3dce5; font: 13px/1.65 var(--sans); }
+    .country-fact-source { display: inline-block; margin-top: 8px; color: #8995a2; font: 10px var(--sans); text-decoration: none; }
     .country-fact-source:hover { color: var(--accent); }
     .news-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     .news-card {
@@ -450,9 +450,9 @@
           </form>
           <p class="hint">Try <kbd>Tokyo</kbd>, <kbd>Nairobi</kbd>, <kbd>40.7, -74.0</kbd></p>
           <aside class="country-fact" id="country-fact" aria-live="polite" hidden>
-            <p class="country-fact-label" id="country-fact-label">A FACT ABOUT THIS COUNTRY</p>
+            <p class="country-fact-label" id="country-fact-label">A little local color</p>
             <p class="country-fact-text" id="country-fact-text"></p>
-            <a class="country-fact-source" id="country-fact-source" target="_blank" rel="noopener noreferrer" hidden>Source: Wikipedia ↗</a>
+            <a class="country-fact-source" id="country-fact-source" target="_blank" rel="noopener noreferrer" hidden>Explore the source ↗</a>
           </aside>
           <section class="wildfire-panel" aria-labelledby="wildfire-panel-title">
             <div class="wildfire-panel-head">
@@ -2619,8 +2619,8 @@
       }
 
       panel.hidden = false;
-      document.querySelector("#country-fact-label").textContent = `A FACT ABOUT ${country.toUpperCase()}`;
-      factText.textContent = "Finding a country fact…";
+      document.querySelector("#country-fact-label").textContent = `A little local color from ${country}`;
+      factText.textContent = "Looking for a fun detail…";
       sourceLink.hidden = true;
       const controller = new AbortController();
       activeCountryFactController = controller;
@@ -2636,16 +2636,24 @@
           throw new Error("No country summary was available.");
         }
         const sentences = extract.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()) || [extract];
-        const detailSentences = sentences.slice(1);
-        const fact = detailSentences.find((sentence) =>
-          /\b(?:largest|smallest|only|most|oldest|youngest|highest|longest|world|archipelago|population|percent|million|billion|first|home to|known for)\b|\d|%/i.test(sentence)
-        ) || detailSentences[0] || sentences[0];
-        factText.textContent = fact;
+        const candidates = sentences.slice(1);
+        const livelyDetails = /\b(?:famous|known for|home to|birthplace|invented|originated|festival|tradition|cuisine|dish|food|music|dance|art|craft|legend|myth|island|volcano|waterfall|forest|reef|wildlife|animal|unusual|record-breaking|world's largest|world's oldest|world's only)\b/i;
+        const dryDetails = /\b(?:population|administrative|government|political|bordered by|divided into|capital is|covers an area|square kilometres|square kilometers)\b/i;
+        const fact = candidates
+          .map((sentence, index) => ({
+            sentence,
+            score: (livelyDetails.test(sentence) ? 3 : 0) -
+              (dryDetails.test(sentence) ? 3 : 0) -
+              (/\b\d[\d,.]*\s*(?:million|billion|percent|%)\b/i.test(sentence) ? 2 : 0) -
+              index * 0.1
+          }))
+          .sort((a, b) => b.score - a.score)[0]?.sentence || sentences[0];
+        factText.textContent = `Here’s one neat thing to know: ${fact}`;
         sourceLink.href = pageUrl;
         sourceLink.hidden = false;
       } catch (error) {
         if (requestId !== countryFactRequest || error.name === "AbortError") return;
-        factText.textContent = "A country fact is temporarily unavailable.";
+        factText.textContent = "Couldn’t find a fun detail just now. Try another place in a moment.";
         console.error("The country fact could not be loaded.", error);
       } finally {
         if (requestId === countryFactRequest) activeCountryFactController = null;
