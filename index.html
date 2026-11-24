@@ -76,7 +76,7 @@
       grid-template-columns: minmax(330px, 420px) minmax(0, 1fr);
       position: relative;
     }
-    .intro { padding-top: 21px; position: relative; z-index: 2; }
+    .intro { min-width: 0; padding-top: 21px; position: relative; z-index: 2; }
     h1 {
       margin: 0; max-width: 430px; font: 600 clamp(41px, 5.2vw, 67px)/1.07 var(--display);
       letter-spacing: -.065em;
@@ -122,7 +122,7 @@
     .hint { margin: 11px 3px 0; color: #65717e; font-size: 10px; line-height: 1.5; }
     .hint kbd { border: 1px solid rgba(207,224,242,.12); border-radius: 4px; padding: 1px 5px; color: #9aa5b1; font: 10px var(--mono); }
 
-    .globe-column { min-width: 0; min-height: 0; margin: -18px -65px 0 -18px; display: flex; flex-direction: column; }
+    .globe-column { min-width: 0; min-height: 0; margin: -18px -65px 0 0; display: flex; flex-direction: column; }
     .globe-area { position: relative; flex: 1 1 auto; min-width: 0; min-height: 500px; }
     #globe { position: absolute; inset: 0; width: 100%; height: 100%; outline: 0; }
     .globe-caption {
@@ -236,7 +236,7 @@
     .results-title span { color: var(--accent); }
     .results-meta { color: #75818d; font: 10px var(--mono); white-space: nowrap; }
     .country-fact {
-      width: min(100%, 420px); min-width: 0;
+      width: 100%; max-width: 400px; min-width: 0;
       margin: 0 0 16px; padding: 13px 15px; border: 1px solid rgba(196,240,107,.2);
       border-radius: 9px; background: linear-gradient(110deg, rgba(16,22,28,.98), rgba(12,17,24,.98));
     }
@@ -378,7 +378,7 @@
 
     @media (max-width: 900px) {
       .hero { grid-template-columns: minmax(300px, 390px) minmax(0, 1fr); padding-top: 48px; }
-      .globe-column { margin-right: -110px; margin-left: -45px; }
+      .globe-column { margin-right: -110px; margin-left: 0; }
       .globe-stats { right: 11%; }
       .news-grid { grid-template-columns: repeat(2, 1fr); }
       .flight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -394,6 +394,7 @@
       h1 { font-size: clamp(42px, 11vw, 60px); }
       .lede { margin: 14px 0 22px; font-size: 13px; }
       .search-card { width: 100%; }
+      .country-fact { max-width: min(400px, calc(100% - 150px)); }
       .globe-column { order: -1; position: absolute; top: 5px; right: -80px; width: 230px; height: 282px; min-height: 0; margin: 0; opacity: .72; }
       .globe-area { min-height: 0; pointer-events: auto; }
       .globe-stats, .globe-caption, .marker-label, .map-legend { display: none; }
