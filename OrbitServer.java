@@ -560,7 +560,7 @@ public class OrbitServer {
         }
         Instant now = Instant.now();
         CachedWildfireFeed cached = WILDFIRE_CACHE.get("FIRMS");
-        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
+        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 5) {
             send(exchange, 200, "application/json; charset=utf-8", cached.json());
             return;
         }
@@ -852,7 +852,7 @@ public class OrbitServer {
         }
         Instant now = Instant.now();
         CachedStormFeed cached = TORNADO_CACHE.get("us");
-        if (cached != null && Duration.between(cached.cachedAt(), now).toMinutes() < 15) {
+        if (cached != null && Duration.between(cached.cachedAt(), now).toSeconds() < 300) {
             send(exchange, 200, "application/geo+json; charset=utf-8", cached.json());
             return;
         }

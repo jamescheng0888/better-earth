@@ -538,14 +538,14 @@
         <div class="storm-head">
           <div>
             <h2 class="storm-title" id="tornadoes-title">Recent tornado reports</h2>
-            <p class="storm-description">Reported tornado locations from NOAA’s latest two Storm Prediction Center report periods.</p>
+            <p class="storm-description">U.S. tornado reports from the past 48 hours, refreshed every 5 minutes.</p>
           </div>
           <span class="storm-status" id="tornadoes-status" aria-live="polite">LOADING</span>
         </div>
         <div class="storm-grid" id="tornadoes-grid" aria-live="polite">
           <div class="storm-empty">Loading official tornado reports…</div>
         </div>
-        <p class="storm-source-note">NOAA Storm Prediction Center preliminary storm reports, U.S. coverage only. Points mark reported locations, not tornado tracks; reports may be incomplete or revised and are not final survey confirmations. ESWD does not allow this site to access its European event stream.</p>
+        <p class="storm-source-note">NOAA Storm Prediction Center preliminary tornado reports, U.S. coverage only. The feed covers NOAA’s latest UTC report periods and is filtered to the past 48 hours. Points mark reported locations, not tornado tracks; reports can be delayed, incomplete, or revised and are not final survey confirmations. No reliable global live tornado feed is available here.</p>
       </section>
 
       <section class="earthquakes-section" aria-labelledby="earthquakes-title">
@@ -656,6 +656,7 @@
     let tornadoRequest = 0;
     let activeTornadoController = null;
     let stormRefreshTimer = null;
+    let tornadoRefreshTimer = null;
     const flightTracks = new Map();
     const maxTrackedFlights = 48;
     const maxTrackPoints = 18;
@@ -1452,14 +1453,13 @@
 
     function setupStormTracking() {
       if (stormRefreshTimer) clearInterval(stormRefreshTimer);
+      if (tornadoRefreshTimer) clearInterval(tornadoRefreshTimer);
       if (activeHurricaneController) activeHurricaneController.abort();
       if (activeTornadoController) activeTornadoController.abort();
       fetchGlobalHurricanes();
       fetchTornadoReports();
-      stormRefreshTimer = window.setInterval(() => {
-        fetchGlobalHurricanes();
-        fetchTornadoReports();
-      }, 900000);
+      stormRefreshTimer = window.setInterval(fetchGlobalHurricanes, 900000);
+      tornadoRefreshTimer = window.setInterval(fetchTornadoReports, 300000);
     }
 
     function parseStormDate(value) {
