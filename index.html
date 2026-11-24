@@ -523,13 +523,13 @@
       <section class="storm-section" aria-labelledby="hurricanes-title">
         <div class="storm-head">
           <div>
-            <h2 class="storm-title" id="hurricanes-title">Global hurricanes &amp; tropical cyclones</h2>
-            <p class="storm-description">Current or recently reported tropical-cyclone events worldwide · Past 30 days.</p>
+            <h2 class="storm-title" id="hurricanes-title">Nearby hurricanes &amp; tropical cyclones</h2>
+            <p class="storm-description" id="hurricanes-description">Search a location to see up to 3 current or recent cyclones within 50 miles. Countries and states use their capital as the center.</p>
           </div>
           <span class="storm-status" id="hurricanes-status" aria-live="polite">LOADING</span>
         </div>
         <div class="storm-grid" id="hurricanes-grid" aria-live="polite">
-          <div class="storm-empty">Loading global tropical-cyclone reports…</div>
+          <div class="storm-empty">Search a location to see nearby cyclone reports.</div>
         </div>
         <p class="storm-source-note">GDACS global event feed. Includes tropical cyclones, not only storms classified as hurricanes; alert level and track details are provided by GDACS.</p>
       </section>
@@ -1449,6 +1449,7 @@
       setupEarthquakeTracking(location);
       setupWildfireTracking(location);
       setupConditionsTracking(location);
+      fetchGlobalHurricanes();
     }
 
     function setupStormTracking() {
@@ -1470,6 +1471,69 @@
       return Date.parse(normalized);
     }
 
+    async function resolveCycloneCenter(location, signal) {
+      if (location.isCountry) {
+        await mapLabelsReady;
+        const country = findCountry(location);
+        const countryIso = country?.properties?.ADM0_A3;
+        const capital = cityFeatures.find((feature) =>
+          Number(feature.properties?.adm0cap) === 1 &&
+          feature.properties?.adm0_a3 === countryIso &&
+          feature.geometry?.coordinates?.length >= 2
+        );
+        if (!capital) throw new Error(`Could not identify the capital of ${location.country || location.name}.`);
+        const [longitude, latitude] = capital.geometry.coordinates.map(Number);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          throw new Error(`Capital coordinates are unavailable for ${location.country || location.name}.`);
+        }
+        return { lat: latitude, lon: longitude, label: `${capital.properties.name}, ${location.country || location.name}` };
+      }
+
+      if (location.isSubdivision) {
+        const wikidataId = String(location.wikidataId || "");
+        if (!/^Q\d+$/.test(wikidataId)) {
+          throw new Error(`The capital of ${location.locality || location.name} could not be identified.`);
+        }
+        const stateResponse = await fetch(
+          `https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`,
+          { signal, headers: { Accept: "application/json" } }
+        );
+        if (!stateResponse.ok) throw new Error(`The capital lookup returned ${stateResponse.status}.`);
+        const stateData = await stateResponse.json();
+        const claims = stateData.entities?.[wikidataId]?.claims?.P36;
+        if (!Array.isArray(claims)) throw new Error(`No capital is listed for ${location.locality || location.name}.`);
+        const claimsWithoutEndDate = claims.filter((claim) => !claim.qualifiers?.P582?.length);
+        const capitalClaim = [...(claimsWithoutEndDate.length
+          ? claimsWithoutEndDate
+          : claims.filter((claim) => claim.rank === "preferred"))]
+          .sort((a, b) => Number(b.rank === "preferred") - Number(a.rank === "preferred"))[0];
+        const capitalId = capitalClaim?.mainsnak?.datavalue?.value?.id;
+        if (!/^Q\d+$/.test(String(capitalId || ""))) {
+          throw new Error(`The current capital of ${location.locality || location.name} could not be identified.`);
+        }
+        const capitalResponse = await fetch(
+          `https://www.wikidata.org/wiki/Special:EntityData/${capitalId}.json`,
+          { signal, headers: { Accept: "application/json" } }
+        );
+        if (!capitalResponse.ok) throw new Error(`The capital coordinates lookup returned ${capitalResponse.status}.`);
+        const capitalData = await capitalResponse.json();
+        const capital = capitalData.entities?.[capitalId];
+        const coordinates = capital?.claims?.P625?.find((claim) =>
+          claim.mainsnak?.datavalue?.value?.globe === "http://www.wikidata.org/entity/Q2"
+        )?.mainsnak?.datavalue?.value;
+        if (!Number.isFinite(coordinates?.latitude) || !Number.isFinite(coordinates?.longitude)) {
+          throw new Error(`Capital coordinates are unavailable for ${location.locality || location.name}.`);
+        }
+        return {
+          lat: coordinates.latitude,
+          lon: coordinates.longitude,
+          label: `${capital.labels?.en?.value || "Capital"}, ${location.locality || location.name}`
+        };
+      }
+
+      return { lat: location.lat, lon: location.lon, label: "" };
+    }
+
     async function fetchGlobalHurricanes() {
       const requestId = ++hurricaneRequest;
       if (activeHurricaneController) activeHurricaneController.abort();
@@ -1477,8 +1541,22 @@
       activeHurricaneController = controller;
       const status = document.querySelector("#hurricanes-status");
       const grid = document.querySelector("#hurricanes-grid");
+      const description = document.querySelector("#hurricanes-description");
+      const location = activeLocation;
+      if (!location) {
+        grid.innerHTML = '<div class="storm-empty">Search a location to see nearby cyclone reports.</div>';
+        status.textContent = "WAITING FOR LOCATION";
+        status.classList.remove("storm-status-live");
+        description.textContent = "Search a location to see up to 3 current or recent cyclones within 50 miles. Countries and states use their capital as the center.";
+        activeHurricaneController = null;
+        return;
+      }
       status.textContent = "UPDATING";
       try {
+        const center = await resolveCycloneCenter(location, controller.signal);
+        if (requestId !== hurricaneRequest) return;
+        const centerLabel = center.label ? `near ${center.label}` : `near ${location.name}`;
+        description.textContent = `Up to 3 current or recent cyclones within 50 miles ${centerLabel}; ${center.label ? "capital-centered" : "centered on the selected location"}.`;
         const response = await fetch("/api/hurricanes", { signal: controller.signal });
         if (!response.ok) {
           const error = await response.json().catch(() => ({}));
@@ -1491,7 +1569,14 @@
         const cutoff = now - 30 * 24 * 60 * 60 * 1000;
         const storms = data.features.map((feature) => {
           const properties = feature?.properties;
-          if (!properties || String(properties.eventtype || "").toUpperCase() !== "TC") return null;
+          const coordinates = feature?.geometry?.coordinates;
+          if (!properties || String(properties.eventtype || "").toUpperCase() !== "TC" ||
+              feature?.geometry?.type !== "Point" || !Array.isArray(coordinates) || coordinates.length < 2) return null;
+          const longitude = Number(coordinates[0]);
+          const latitude = Number(coordinates[1]);
+          if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+              !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+              distanceBetweenLocationsKm(center.lat, center.lon, latitude, longitude) > 50 * 1.609344) return null;
           const startedAt = parseStormDate(properties.fromdate);
           const endedAt = parseStormDate(properties.todate);
           const current = properties.iscurrent === true || String(properties.iscurrent).toLowerCase() === "true";
@@ -1503,15 +1588,16 @@
             alert: String(properties.alertlevel || "Unspecified"),
             startedAt,
             endedAt,
+            eventTime: Math.max(Number.isFinite(startedAt) ? startedAt : 0, Number.isFinite(endedAt) ? endedAt : 0),
+            distanceKm: distanceBetweenLocationsKm(center.lat, center.lon, latitude, longitude),
             current,
             reportUrl: safeExternalUrl(properties.url?.report)
           };
         }).filter(Boolean)
-          .sort((a, b) => Number(b.current) - Number(a.current) ||
-            (Number.isFinite(b.endedAt) ? b.endedAt : 0) - (Number.isFinite(a.endedAt) ? a.endedAt : 0))
-          .slice(0, 9);
+          .sort((a, b) => b.eventTime - a.eventTime)
+          .slice(0, 3);
         if (!storms.length) {
-          grid.innerHTML = '<div class="storm-empty">No active or recently reported tropical-cyclone events were returned for the past 30 days.</div>';
+          grid.innerHTML = `<div class="storm-empty">No current or recent tropical cyclones were reported within 50 miles of ${escapeHtml(center.label || location.name)} in the past 30 days.</div>`;
         } else {
           grid.innerHTML = storms.map((storm) => {
             const dateRange = [storm.startedAt, storm.endedAt]
@@ -1529,19 +1615,21 @@
                 <span>${storm.current ? "CURRENT" : "RECENT"}</span>
                 <span>${escapeHtml(storm.alert)} alert</span>
                 <span>${escapeHtml(storm.country)}</span>
+                <span>${(storm.distanceKm / 1.609344).toFixed(1)} mi away</span>
                 ${dateRange ? `<span>${escapeHtml(dateRange)}</span>` : ""}
                 ${detailsLink ? `<span>${detailsLink}</span>` : ""}
               </div>
             </article>`;
           }).join("");
         }
-        status.textContent = `${storms.length} EVENTS · GDACS`;
+        status.textContent = `${storms.length} NEARBY · GDACS`;
         status.classList.add("storm-status-live");
       } catch (error) {
         if (requestId !== hurricaneRequest || error.name === "AbortError") return;
         grid.innerHTML = `<div class="storm-empty">${escapeHtml(error.message || "The global cyclone feed is temporarily unavailable.")} It will retry automatically.</div>`;
         status.textContent = "FEED UNAVAILABLE";
         status.classList.remove("storm-status-live");
+        description.textContent = "Nearby cyclone reports could not be loaded.";
         console.error("Global tropical-cyclone reports could not be loaded.", error);
       } finally {
         if (requestId === hurricaneRequest) activeHurricaneController = null;
@@ -2692,7 +2780,7 @@
     }
 
     async function searchPlace(query) {
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1&addressdetails=1&accept-language=en`;
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1&addressdetails=1&extratags=1&accept-language=en`;
       const response = await fetch(url, { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error(`Place lookup returned ${response.status}`);
       const results = await response.json();
@@ -2711,6 +2799,8 @@
           : country ? `${locality}, ${country}` : result.display_name.split(",").slice(0, 2).join(",").trim(),
         locality, country, countryCode: address.country_code || "", lat: Number(result.lat), lon: Number(result.lon),
         isCountry,
+        isSubdivision: ["state", "province", "region", "territory"].includes(result.addresstype),
+        wikidataId: result.extratags?.wikidata || "",
         isCity: Boolean(address.city || address.town || address.village || address.municipality ||
           ["city", "town", "village", "municipality"].includes(result.addresstype))
       };
