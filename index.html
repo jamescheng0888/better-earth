@@ -705,6 +705,16 @@
       };
     }
 
+    function visibleSurfaceSpanDegrees(distance, halfAngle) {
+      const horizonAngle = Math.asin(Math.min(1, 1 / distance));
+      if (halfAngle >= horizonAngle) return 2 * Math.acos(1 / distance) * 180 / Math.PI;
+      const root = Math.sqrt(1 - distance ** 2 * Math.sin(halfAngle) ** 2);
+      const rayDistance = distance * Math.cos(halfAngle) - root;
+      const surfaceX = rayDistance * Math.sin(halfAngle);
+      const surfaceZ = distance - rayDistance * Math.cos(halfAngle);
+      return 2 * Math.atan2(surfaceX, surfaceZ) * 180 / Math.PI;
+    }
+
     function detailedTileGeometry(zoom, tileX, tileY, radius) {
       const tileCount = 2 ** zoom;
       const segments = 16;
@@ -820,7 +830,20 @@
         }
         return;
       }
-      const detailedZoom = THREE.MathUtils.clamp(Math.round(16 - distance), 12, 15);
+      const halfVerticalFov = Math.atan(Math.tan(toRadians(camera.fov / 2)) / camera.zoom);
+      const halfHorizontalFov = Math.atan(
+        Math.tan(toRadians(camera.fov / 2)) * camera.aspect / camera.zoom
+      );
+      const visibleSpan = Math.max(
+        visibleSurfaceSpanDegrees(distance, halfVerticalFov),
+        visibleSurfaceSpanDegrees(distance, halfHorizontalFov)
+      );
+      const latitudeScale = Math.max(Math.cos(toRadians(activeLocation.lat)), 0.2);
+      const detailedZoom = THREE.MathUtils.clamp(
+        Math.floor(Math.log2(11 * 360 * latitudeScale / visibleSpan)),
+        4,
+        15
+      );
       const imageryLevels = [
         { zoom: 6, side: 9, radius: 1.001 },
         { zoom: 9, side: 9, radius: 1.002 },
@@ -831,7 +854,7 @@
       );
       const key = imageryLevels.map((level) => {
         const center = tileCoordinates(activeLocation.lat, activeLocation.lon, level.zoom);
-        return `${level.zoom}/${center.x}/${center.y}`;
+        return `${level.zoom}/${level.side}/${center.x}/${center.y}`;
       }).join("|");
       if (key === detailedImageryKey) return;
       detailedImageryKey = key;
@@ -1362,6 +1385,7 @@
       renderer.setSize(bounds.width, bounds.height, false);
       camera.aspect = bounds.width / bounds.height;
       camera.updateProjectionMatrix();
+      updateDetailedImagery();
     }
     new ResizeObserver(resizeRenderer).observe(globeArea);
     resizeRenderer();
