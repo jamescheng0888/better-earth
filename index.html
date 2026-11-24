@@ -611,6 +611,7 @@
     let activeLocation = null;
     let countryFactRequest = 0;
     let activeCountryFactController = null;
+    const countryFactHistory = new Map();
     let toastTimer;
     let newsRequest = 0;
     let activeNewsController = null;
@@ -2700,6 +2701,168 @@
       }
     }
 
+    async function fetchWikipediaSummary(title, signal) {
+      const response = await fetch(
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
+        { signal, headers: { Accept: "application/json" } }
+      );
+      if (!response.ok) throw new Error(`Wikipedia returned ${response.status} for ${title}.`);
+      const data = await response.json();
+      const extract = typeof data.extract === "string" ? data.extract.trim() : "";
+      const pageUrl = data.content_urls?.desktop?.page;
+      if (!extract || typeof pageUrl !== "string" || !pageUrl.startsWith("https://en.wikipedia.org/wiki/")) {
+        throw new Error(`Wikipedia has no usable summary for ${title}.`);
+      }
+      return { title: data.title || title, extract, pageUrl, source: "Wikipedia" };
+    }
+
+    async function fetchWikidataFacts(country, signal) {
+      const searchUrl = new URL("https://www.wikidata.org/w/api.php");
+      searchUrl.search = new URLSearchParams({
+        action: "wbsearchentities",
+        search: country,
+        language: "en",
+        format: "json",
+        origin: "*",
+        type: "item",
+        limit: "8"
+      });
+      const searchResponse = await fetch(searchUrl, { signal, headers: { Accept: "application/json" } });
+      if (!searchResponse.ok) throw new Error(`Wikidata search returned ${searchResponse.status}.`);
+      const searchData = await searchResponse.json();
+      const countryEntity = searchData.search?.find((item) =>
+        normalizeCountryName(item.label) === normalizeCountryName(country) ||
+        (Array.isArray(item.aliases) && item.aliases.some((alias) =>
+          normalizeCountryName(alias) === normalizeCountryName(country)
+        ))
+      );
+      if (!countryEntity?.id) throw new Error(`Wikidata could not identify ${country}.`);
+
+      const countryResponse = await fetch(
+        `https://www.wikidata.org/wiki/Special:EntityData/${encodeURIComponent(countryEntity.id)}.json`,
+        { signal, headers: { Accept: "application/json" } }
+      );
+      if (!countryResponse.ok) throw new Error(`Wikidata country data returned ${countryResponse.status}.`);
+      const countryData = await countryResponse.json();
+      const countryItem = countryData.entities?.[countryEntity.id];
+      if (!countryItem) throw new Error(`Wikidata returned no entity for ${country}.`);
+      const countryPageUrl = `https://www.wikidata.org/wiki/${encodeURIComponent(countryEntity.id)}`;
+      const factDefinitions = [
+        { property: "P610", makeText: (name) => `${name} is the highest point in ${country}.`, score: 6 },
+        { property: "P47", makeText: (name) => `${country} shares a land border with ${name}.`, score: 5 },
+        { property: "P37", makeText: (name) => `One of ${country}'s official languages is ${name}.`, score: 4 },
+        { property: "P36", makeText: (name) => `The capital of ${country} is ${name}.`, score: 3, kind: "capital" },
+        { property: "P38", makeText: (name) => `${name} is an official currency of ${country}.`, score: 3 },
+        { property: "P30", makeText: (name) => `${country} is part of ${name}.`, score: 0 }
+      ];
+      const claimsByEntity = [];
+      for (const definition of factDefinitions) {
+        const claims = (countryItem.claims?.[definition.property] || [])
+          .filter((claim) => claim.rank !== "deprecated" && !claim.qualifiers?.P582?.length)
+          .sort((a, b) => Number(b.rank === "preferred") - Number(a.rank === "preferred"));
+        for (const claim of claims.slice(0, definition.property === "P47" || definition.property === "P37" ? 4 : 1)) {
+          const entityId = claim.mainsnak?.datavalue?.value?.id;
+          if (/^Q\d+$/.test(String(entityId || ""))) claimsByEntity.push({ definition, entityId });
+        }
+      }
+
+      const ids = [...new Set(claimsByEntity.map(({ entityId }) => entityId))];
+      const labels = {};
+      if (ids.length) {
+        const labelsUrl = new URL("https://www.wikidata.org/w/api.php");
+        labelsUrl.search = new URLSearchParams({
+          action: "wbgetentities",
+          ids: ids.join("|"),
+          props: "labels",
+          languages: "en",
+          format: "json",
+          origin: "*"
+        });
+        try {
+          const labelsResponse = await fetch(labelsUrl, { signal, headers: { Accept: "application/json" } });
+          if (!labelsResponse.ok) throw new Error(`Wikidata labels returned ${labelsResponse.status}.`);
+          const labelsData = await labelsResponse.json();
+          Object.assign(labels, labelsData.entities || {});
+        } catch (error) {
+          if (error.name === "AbortError") throw error;
+          console.warn(`Wikidata property labels were unavailable for ${country}.`, error);
+        }
+      }
+
+      const countryDescription = countryItem.descriptions?.en?.value;
+      const facts = countryDescription
+        ? [{
+            text: `${country} is ${countryDescription.replace(/[.!?]+$/, "")}.`,
+            pageUrl: countryPageUrl,
+            source: "Wikidata",
+            score: 0
+          }]
+        : [];
+      for (const { definition, entityId } of claimsByEntity) {
+        const label = labels[entityId]?.labels?.en?.value;
+        if (!label) continue;
+        facts.push({
+          text: definition.makeText(label),
+          pageUrl: countryPageUrl,
+          source: "Wikidata",
+          score: definition.score,
+          kind: definition.kind
+        });
+      }
+      return facts;
+    }
+
+    function sentencesFromSummary(summary) {
+      const sentences = typeof Intl.Segmenter === "function"
+        ? [...new Intl.Segmenter("en", { granularity: "sentence" }).segment(summary.extract)]
+          .map(({ segment }) => segment.trim())
+        : summary.extract.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()) || [summary.extract];
+      const livelyDetails = /\b(?:famous|known for|home to|birthplace|invented|originated|festival|tradition|cuisine|dish|food|music|dance|art|craft|legend|myth|island|volcano|waterfall|forest|reef|wildlife|animal|unusual|record-breaking|world's largest|world's oldest|world's only|largest in the world|oldest in the world|unique|distinctive|renowned|celebrated|famed|spectacular|giant|ancient|largest|oldest|tallest|longest|mountain|archipelago|species|temple|castle|lake|river|desert|glacier|coral|rainforest|most populous|most visited)\b/i;
+      const dryDetails = /\b(?:population|administrative|government|political|bordered by|divided into|capital is|covers an area|square kilometres|square kilometers)\b/i;
+      return sentences
+        .filter((sentence) => sentence.length >= 45 && sentence.length <= 320)
+        .map((sentence, index) => ({
+          text: sentence,
+          pageUrl: summary.pageUrl,
+          source: summary.source,
+          score: (livelyDetails.test(sentence) ? 4 : 0) -
+            (dryDetails.test(sentence) ? 3 : 0) -
+            (/\b\d[\d,.]*\s*(?:million|billion|percent|%)\b/i.test(sentence) ? 1 : 0) -
+            index * 0.15
+        }));
+    }
+
+    function chooseCountryFact(facts, country) {
+      if (!facts.length) return null;
+      const interestingFacts = facts.filter((fact) => fact.score > 0 && fact.kind !== "capital");
+      const capitalFacts = facts.filter((fact) => fact.kind === "capital");
+      const pool = interestingFacts.length
+        ? interestingFacts
+        : capitalFacts.length
+          ? capitalFacts
+          : facts;
+      const historyKey = normalizeCountryName(country);
+      const recentFacts = countryFactHistory.get(historyKey) || [];
+      const unseenFacts = pool.filter((fact) => !recentFacts.includes(`${fact.source}|${fact.text}`));
+      const choices = unseenFacts.length ? unseenFacts : pool;
+      const fact = choices[Math.floor(Math.random() * choices.length)];
+      const factKey = `${fact.source}|${fact.text}`;
+      countryFactHistory.set(historyKey, [...recentFacts.filter((item) => item !== factKey), factKey].slice(-5));
+      return fact;
+    }
+
+    function showCountryFactFallback(location, country, place, detail) {
+      const factText = document.querySelector("#country-fact-text");
+      const sourceLink = document.querySelector("#country-fact-source");
+      const placeDescription = country
+        ? `${place && normalizeCountryName(place) !== normalizeCountryName(country) ? `${place} is in ` : ""}${country}`
+        : `${Math.abs(location.lat).toFixed(3)}° ${location.lat >= 0 ? "N" : "S"}, ${Math.abs(location.lon).toFixed(3)}° ${location.lon >= 0 ? "E" : "W"}`;
+      factText.textContent = `Your pin is in ${placeDescription}. ${detail}`;
+      sourceLink.href = `https://www.openstreetmap.org/?mlat=${encodeURIComponent(location.lat)}&mlon=${encodeURIComponent(location.lon)}#map=8/${encodeURIComponent(location.lat)}/${encodeURIComponent(location.lon)}`;
+      sourceLink.textContent = "Source: OpenStreetMap location ↗";
+      sourceLink.hidden = false;
+    }
+
     async function fetchCountryFact(location) {
       const requestId = ++countryFactRequest;
       if (activeCountryFactController) activeCountryFactController.abort();
@@ -2708,56 +2871,99 @@
       const factText = document.querySelector("#country-fact-text");
       const sourceLink = document.querySelector("#country-fact-source");
       const country = typeof location.country === "string" ? location.country.trim() : "";
-      if (!country) {
-        panel.hidden = true;
-        return;
-      }
-
+      const place = typeof location.locality === "string" && location.locality.trim()
+        ? location.locality.trim()
+        : location.name || "";
       panel.hidden = false;
-      document.querySelector("#country-fact-label").textContent = `A little local color from ${country}`;
+      document.querySelector("#country-fact-label").textContent = country
+        ? `A little local color from ${country}`
+        : "A little local color";
       factText.textContent = "Looking for a fun detail…";
       sourceLink.hidden = true;
       const controller = new AbortController();
       activeCountryFactController = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      let capitalFact = null;
       try {
-        const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(country)}`;
-        const response = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
-        if (!response.ok) throw new Error(`Wikipedia returned ${response.status}`);
-        const data = await response.json();
-        if (requestId !== countryFactRequest) return;
-        const extract = typeof data.extract === "string" ? data.extract.trim() : "";
-        const pageUrl = data.content_urls?.desktop?.page;
-        if (!extract || typeof pageUrl !== "string" || !pageUrl.startsWith("https://en.wikipedia.org/")) {
-          throw new Error("No country summary was available.");
+        const titles = [];
+        if (place && normalizeCountryName(place) !== normalizeCountryName(country)) titles.push(place);
+        if (country) titles.push(country);
+        if (country) {
+          await mapLabelsReady;
+          const countryFeature = findCountry(location);
+          const countryIso = countryFeature?.properties?.ADM0_A3;
+          const capital = cityFeatures.find((feature) =>
+            Number(feature.properties?.adm0cap) === 1 &&
+            feature.properties?.adm0_a3 === countryIso
+          );
+          if (capital?.properties?.name) {
+            capitalFact = {
+              text: `The capital of ${country} is ${capital.properties.name}.`,
+              pageUrl: "https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_10m_populated_places_simple.geojson",
+              source: "Natural Earth",
+              score: 0,
+              kind: "capital"
+            };
+            if (location.isCountry) titles.unshift(capital.properties.name);
+          }
         }
-        const sentences = typeof Intl.Segmenter === "function"
-          ? [...new Intl.Segmenter("en", { granularity: "sentence" }).segment(extract)].map(({ segment }) => segment.trim())
-          : extract.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()) || [extract];
-        const candidates = sentences.slice(1);
-        const livelyDetails = /\b(?:famous|known for|home to|birthplace|invented|originated|festival|tradition|cuisine|dish|food|music|dance|art|craft|legend|myth|island|volcano|waterfall|forest|reef|wildlife|animal|unusual|record-breaking|world's largest|world's oldest|world's only|largest in the world|oldest in the world|unique|distinctive|renowned|celebrated|famed|spectacular|giant|ancient|largest|oldest|tallest|longest)\b/i;
-        const dryDetails = /\b(?:population|administrative|government|political|bordered by|divided into|capital is|covers an area|square kilometres|square kilometers)\b/i;
-        const rankedFacts = candidates
-          .map((sentence, index) => ({
-            sentence,
-            score: (livelyDetails.test(sentence) ? 3 : 0) -
-              (dryDetails.test(sentence) ? 3 : 0) -
-              (/\b\d[\d,.]*\s*(?:million|billion|percent|%)\b/i.test(sentence) ? 2 : 0) -
-              index * 0.1
-          }))
-          .sort((a, b) => b.score - a.score);
-        const fact = rankedFacts[0]?.score > 0 ? rankedFacts[0].sentence : "";
-        if (!fact) {
-          factText.textContent = `I couldn't find a sufficiently interesting, sourced detail about ${country} right now.`;
+
+        const [summaries, wikidataResult] = await Promise.all([
+          Promise.allSettled([...new Set(titles)].map((title) =>
+            fetchWikipediaSummary(title, controller.signal)
+          )),
+          country
+            ? fetchWikidataFacts(country, controller.signal).then(
+              (value) => ({ status: "fulfilled", value }),
+              (reason) => ({ status: "rejected", reason })
+            )
+            : Promise.resolve(null)
+        ]);
+        if (requestId !== countryFactRequest) return;
+        const facts = summaries.flatMap((result) =>
+          result.status === "fulfilled" ? sentencesFromSummary(result.value) : []
+        );
+        if (capitalFact) facts.push(capitalFact);
+        const factSources = summaries.filter((result) => result.status === "fulfilled").length;
+        if (wikidataResult?.status === "fulfilled") {
+          facts.push(...wikidataResult.value);
+        } else if (wikidataResult?.status === "rejected" && wikidataResult.reason?.name !== "AbortError") {
+          console.warn("No Wikidata country facts were available.", wikidataResult.reason);
+        }
+        if (wikidataResult?.status === "rejected" && wikidataResult.reason?.name === "AbortError") {
+          throw wikidataResult.reason;
+        }
+        if (requestId !== countryFactRequest) return;
+
+        const fact = chooseCountryFact(facts, country || place);
+        if (fact) {
+          factText.textContent = fact.text;
+          sourceLink.href = fact.pageUrl;
+          sourceLink.textContent = `Source: ${fact.source} ↗`;
+          sourceLink.hidden = false;
+        } else {
+          showCountryFactFallback(location, country, place, "I couldn't reach the reference sources for a local detail just now.");
+          console.warn(`Wikipedia and Wikidata had no usable fact for ${country || place}.`, {
+            successfulWikipediaSources: factSources
+          });
+        }
+      } catch (error) {
+        if (requestId !== countryFactRequest) return;
+        if (error.name === "AbortError") {
+          if (capitalFact) {
+            factText.textContent = capitalFact.text;
+            sourceLink.href = capitalFact.pageUrl;
+            sourceLink.textContent = `Source: ${capitalFact.source} ↗`;
+            sourceLink.hidden = false;
+          } else {
+            showCountryFactFallback(location, country, place, "Local reference sources are taking longer than usual.");
+          }
           return;
         }
-        factText.textContent = fact;
-        sourceLink.href = pageUrl;
-        sourceLink.hidden = false;
-      } catch (error) {
-        if (requestId !== countryFactRequest || error.name === "AbortError") return;
-        factText.textContent = "Couldn’t find a fun detail just now. Try another place in a moment.";
-        console.error("The country fact could not be loaded.", error);
+        showCountryFactFallback(location, country, place, "A local detail is temporarily unavailable.");
+        console.error("Country and place facts could not be loaded.", error);
       } finally {
+        clearTimeout(timeoutId);
         if (requestId === countryFactRequest) activeCountryFactController = null;
       }
     }
