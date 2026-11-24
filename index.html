@@ -1514,15 +1514,15 @@
           grid.innerHTML = '<div class="storm-empty">No active or recently reported tropical-cyclone events were returned for the past 30 days.</div>';
         } else {
           grid.innerHTML = storms.map((storm) => {
-            const report = storm.reportUrl
-              ? `<a href="${escapeHtml(storm.reportUrl)}" target="_blank" rel="noopener noreferrer">GDACS details ↗</a>`
-              : "GDACS";
             const dateRange = [storm.startedAt, storm.endedAt]
               .filter(Number.isFinite)
               .map((time) => formatCentralTime(time, { dateStyle: "medium" }))
               .join(" – ");
             const alertColor = storm.alert.toLowerCase() === "red" ? "#ff7078"
               : storm.alert.toLowerCase() === "orange" ? "#ffad62" : "#8bc7df";
+            const detailsLink = storm.reportUrl
+              ? `<a href="${escapeHtml(storm.reportUrl)}" target="_blank" rel="noopener noreferrer">GDACS details ↗</a>`
+              : "";
             return `<article class="storm-card" style="--storm-color:${alertColor}">
               <h3 class="storm-card-title">${escapeHtml(storm.name)}</h3>
               <div class="storm-card-details">
@@ -1530,7 +1530,7 @@
                 <span>${escapeHtml(storm.alert)} alert</span>
                 <span>${escapeHtml(storm.country)}</span>
                 ${dateRange ? `<span>${escapeHtml(dateRange)}</span>` : ""}
-                <span>${report}</span>
+                ${detailsLink ? `<span>${detailsLink}</span>` : ""}
               </div>
             </article>`;
           }).join("");
