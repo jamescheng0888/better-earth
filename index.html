@@ -841,6 +841,7 @@
         { zoom: 6, side: 9, radius: 1.001 },
         { zoom: 9, side: 9, radius: 1.002 },
         { zoom: 11, side: 9, radius: 1.0025 },
+        { zoom: 13, side: 9, radius: 1.0028 },
         { zoom: detailedZoom, side: 11, radius: 1.003 }
       ].filter((level, index, levels) =>
         levels.findIndex((other) => other.zoom === level.zoom) === index
@@ -876,10 +877,15 @@
         }
       }
       try {
-        const loadedTiles = await Promise.all(tiles.map(async (tile) => ({
-          ...tile,
-          texture: await tile.texture
-        })));
+        const settledTiles = await Promise.all(tiles.map(async (tile) => {
+          try {
+            return { ...tile, texture: await tile.texture };
+          } catch (error) {
+            return null;
+          }
+        }));
+        const loadedTiles = settledTiles.filter(Boolean);
+        if (!loadedTiles.length) throw new Error("No imagery tiles loaded.");
         if (requestId !== detailedImageryRequest || key !== detailedImageryKey) return;
         const meshes = loadedTiles.map((tile) => new THREE.Mesh(
           detailedTileGeometry(tile.zoom, tile.tileX, tile.tileY, tile.radius),
