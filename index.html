@@ -939,6 +939,7 @@
     marker.add(markerCore);
     marker.visible = false;
     earthGroup.add(marker);
+    const markerWorldPosition = new THREE.Vector3();
 
     const flightMarkerGroup = new THREE.Group();
     const flightMarkerMaterial = new THREE.PointsMaterial({
@@ -1406,11 +1407,14 @@
       requestAnimationFrame(animate);
       const now = performance.now();
       if (autoRotate && !userInteracting && !activeLocation) earthGroup.rotation.y += 0.0007;
-      marker.scale.setScalar(THREE.MathUtils.clamp(
-        camera.position.distanceTo(controls.target) - 1,
-        0.08,
-        1
-      ));
+      if (marker.visible) {
+        const markerDistance = camera.position.distanceTo(marker.getWorldPosition(markerWorldPosition));
+        marker.scale.setScalar(THREE.MathUtils.clamp(
+          Math.pow(markerDistance / 1.5, 1.25),
+          0.002,
+          1
+        ));
+      }
       if (rotatingToLocation) {
         const progress = Math.min((now - rotationStartedAt) / 850, 1);
         const easedProgress = progress * progress * (3 - 2 * progress);
