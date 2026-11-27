@@ -111,6 +111,16 @@ public class OrbitServer {
     private static void handle(HttpExchange exchange) throws IOException {
         try {
             String path = exchange.getRequestURI().getPath();
+            if (path.equals("/robots.txt")) {
+                send(exchange, 200, "text/plain; charset=utf-8",
+                    "User-agent: *\nAllow: /\nSitemap: https://better-earth.onrender.com/sitemap.xml\n");
+                return;
+            }
+            if (path.equals("/sitemap.xml")) {
+                send(exchange, 200, "application/xml; charset=utf-8",
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://better-earth.onrender.com/</loc></url></urlset>");
+                return;
+            }
             if (path.equals("/api/news")) {
                 if (!exchange.getRequestMethod().equals("GET")) {
                     send(exchange, 405, "application/json; charset=utf-8", "{\"error\":\"Use GET.\"}");
