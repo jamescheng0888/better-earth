@@ -1007,19 +1007,21 @@
       const bounds = mapLabelLayer.getBoundingClientRect();
       if (!bounds.width || !bounds.height) return;
       const distance = camera.position.distanceTo(controls.target);
+      const zoom = Math.round((camera.zoom * zoomDistanceScale / distance) * 10) / 10;
       const isCitySearch = Boolean(activeLocation?.isCity);
-      const showNearbyCities = isCitySearch && distance < 2.2;
-      const showCities = isCitySearch
-        ? showNearbyCities
-        : selectedCountry && selectedCityLabels.length > 0 && distance < 2.7;
+      const hasPrimaryCityLabel = selectedCityLabels.some((label) => label.isPrimary);
+      const showPrimaryCity = (isCitySearch || hasPrimaryCityLabel) && zoom >= 2.5;
+      const showNearbyCities = (isCitySearch || hasPrimaryCityLabel) && zoom >= 2.6;
+      const showCities = showNearbyCities ||
+        (!isCitySearch && selectedCountry && selectedCityLabels.length > 0 && zoom >= 2.6);
       const labelMode = !activeLocation
         ? "SEARCH A PLACE TO SEE ITS REGION"
-        : isCitySearch
+        : isCitySearch || hasPrimaryCityLabel
           ? showNearbyCities
-            ? "NEARBY CITIES · ZOOM OUT FOR SELECTED CITY"
-            : selectedCityLabels.length > 1
+            ? "NEARBY CITIES"
+            : showPrimaryCity
               ? "CITY · ZOOM IN FOR NEARBY CITIES"
-              : "CITY · NO NEARBY CITIES"
+              : "CITY · ZOOM IN TO SEE CITY"
         : !selectedCountry ? "REGION LABEL UNAVAILABLE"
         : showCities ? "NEARBY CITIES · ZOOM OUT FOR COUNTRY"
           : selectedCityLabels.length
@@ -1029,8 +1031,10 @@
         `${labelMode}${selectedFlightLabels.length ? " · FLIGHTS ON GLOBE" : ""}${selectedEarthquakeLabels.length ? " · EARTHQUAKES ON GLOBE" : ""}${selectedTornadoLabels.length ? " · TORNADO REPORTS ON GLOBE" : ""}`;
       camera.updateMatrixWorld();
       const cameraDirection = camera.position.clone().sub(controls.target).normalize();
-      const placeCandidates = isCitySearch
-        ? showNearbyCities ? selectedCityLabels : selectedCityLabels.filter((label) => label.isPrimary)
+      const placeCandidates = isCitySearch || hasPrimaryCityLabel
+        ? showNearbyCities
+          ? selectedCityLabels
+          : showPrimaryCity ? selectedCityLabels.filter((label) => label.isPrimary) : []
         : !selectedCountry ? [] : showCities ? selectedCityLabels : selectedCountryLabel ? [selectedCountryLabel] : [];
       const candidates = [
         ...placeCandidates.filter((label) => label.isPrimary || label.kind === "country"),
@@ -1229,7 +1233,15 @@
         selectedCityLabels = countryCities.map((feature) => {
             const properties = feature.properties;
             const [longitude, latitude] = feature.geometry.coordinates;
-            return createMapLabel(properties.name, Number(latitude), Number(longitude), "city", -Number(properties.pop_max));
+            const isPrimary = normalizeCountryName(properties.name) === normalizeCountryName(location.locality);
+            return createMapLabel(
+              properties.name,
+              Number(latitude),
+              Number(longitude),
+              "city",
+              isPrimary ? Number.NEGATIVE_INFINITY : -Number(properties.pop_max),
+              isPrimary
+            );
           });
         mapLabels.push(...selectedCityLabels);
       }
